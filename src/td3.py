@@ -50,9 +50,6 @@ class actor:
         return action.numpy()
 
     def get_random_action(self):
-        # action_mean = np.random.uniform(-1, 1, size=(1, self.action_dim))
-        # action_std = np.random.uniform(0.01, 0.2, size=(1, self.action_dim))
-        # return np.tanh(np.random.normal(loc=action_mean, scale=action_std)), action_mean, action_std
         return np.random.uniform(-1, 1, size=(self.action_dim))
 
     def get_current_action(self, state, verbose=False, noisy=False):
@@ -131,9 +128,6 @@ class actor:
         for i in range(batch_size):
             plan[i, 0] = plan_0[plan_0_indices[i]]
             plan[i, 1] = plan_1[plan_1_indices[i]]
-
-        # for i in range(batch_size):
-        #     print(i, plan[i])
         return plan
 
 class critic:
