@@ -2028,8 +2028,6 @@ class rl_dataset:
 
         max_reward = np.max(self.rewards)
         min_reward = np.min(self.rewards)
-        # median_reward = (np.median(self.rewards) - min_reward)/(max_reward - min_reward)
-        # median_reward = median_reward * 2 - 1
 
         terminal_list = []
 
@@ -2040,22 +2038,16 @@ class rl_dataset:
         added_count = 0
         for i in range(self.state.shape[0]):
 
-            # np.sign(list_rew[i]) * np.log(1 + list_rew[i])
-
             state_list.append(self.state[i])
             action_list.append(self.actions[i])
-            # reward_list.append(np.sign(self.rewards[i]) * np.log(1 + np.abs(self.rewards[i])))
-
             rescaled_reward = self.rewards[i] / (max_reward - min_reward)
             reward_list.append(rescaled_reward)
-            # reward_list.append(self.rewards[i])
             terminal_list.append(self.terminals[i])
 
             traj_len += 1
             traj_reward += self.rewards[i]
 
             if self.terminals[i] or self.timeouts[i]:
-                # add dummy values for next state, next action
                 action_list.append(np.copy(self.actions[i]))  # Dummy actions ...
 
                 n_step_next_action_list = []
@@ -2075,30 +2067,12 @@ class rl_dataset:
                     n_step_next_action_list.append(action_list[n_step_state_index + 1])
                     n_step_terminal.append(terminal_list[n_step_state_index - 1])
 
-                # state, next_state, action, next_action, rewards, terminal, n_step_state, n_step_terminal, n_step_action_mean, abstract_action
-
                 for j in range(len(reward_list) - 1):
-                    # if terminal_list[j]:
-                    # print(i, self.timeouts[j], len(state_list), len(action_list))
-                    # quit()
-                    #
-                    # print(self.state[i - 2])
-                    # print(self.state[i - 1])
-                    # print(self.state[i])
-                    # print(self.state[i + 1])
-                    # print(self.state[i + 2])
-
                     if self.timeouts[j + 1] and j > len(
                             reward_list) - args.n_step:  # do not add last n_steps states because it's a bit messed up
                         break
                     added_count += 1
                     if n_step_next_action:
-                        # if terminal_list[j + 1]:
-                        #     for _ in range(10):
-                        #         buffer.add(np.copy(state_list[j]), np.copy(state_list[j + 1]), np.copy(action_list[j]), np.copy(action_list[j + 1]),
-                        #                    np.copy(reward_list[j]), np.copy(terminal_list[j + 1]), np.copy(n_step_state_list[j]),
-                        #                    np.copy(n_step_terminal[j]), np.copy(n_step_action_list[j]), n_step_next_action_list[j])
-                        # else:
                         buffer.add(np.copy(state_list[j]), np.copy(state_list[j + 1]), np.copy(action_list[j]),
                                    np.copy(action_list[j + 1]),
                                    np.copy(reward_list[j]), np.copy(terminal_list[j + 1]),
@@ -2106,11 +2080,6 @@ class rl_dataset:
                                    np.copy(n_step_terminal[j]), np.copy(n_step_action_list[j]),
                                    n_step_next_action_list[j])
                     else:
-                        # if terminal_list[j + 1]:
-                        #     for _ in range(10):
-                        #         buffer.add(np.copy(state_list[j]), np.copy(state_list[j + 1]), np.copy(action_list[j]), np.copy(action_list[j + 1]),
-                        #                    np.copy(reward_list[j]), np.copy(terminal_list[j]), np.copy(n_step_state_list[j]), np.copy(n_step_terminal[j]), np.copy(n_step_action_list[j]))
-                        # else:
                         buffer.add(np.copy(state_list[j]), np.copy(state_list[j + 1]), np.copy(action_list[j]),
                                    np.copy(action_list[j + 1]),
                                    np.copy(reward_list[j]), np.copy(terminal_list[j + 1]),
@@ -2238,6 +2207,9 @@ def get_args():
     parser.add_argument('--policy_training_steps', type=int, default=500001)
     parser.add_argument('--preference_loss_weight', type=float, default=1)
     parser.add_argument('--error_function_cap', type=float, default=0.3)
+    parser.add_argument('--intervention_thresholds', type=str, default="[12, 16, 20, 24]")
+    parser.add_argument('--buffer_id', type=int, default=6)
+    parser.add_argument('--cost_version', type=int, default=5)
 
     args = parser.parse_args()
     return args
