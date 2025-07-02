@@ -325,3 +325,133 @@ def special_evaluation(args, actor, cost_buffer, tflogger, name, frame_num, mode
     tflogger.log_scalar(name + "/relative_error", relative_error/(4 * iterations * (estimated_noisy_cost.shape[0] - 1)), frame_num)
     tflogger.log_scalar(name + "/relative_error_no_noise", relative_error_no_noise/(4 * iterations * (estimated_noisy_cost.shape[0] - 1)), frame_num)
     print("-----------------------------------------")
+
+def evaluate_preference_loss(policy, cost_buffer, error_function):
+    segment_batch_size = 256
+    # segment_batch_size = 4000
+    # s_t_raw_preintervention, a_t_raw_preintervention, r_t_raw_preintervention, terminal_t_raw_preintervention, expert_only_s_t_raw_preintervention, \
+    # s_t_1_raw_preintervention, mean_label_t_raw_preintervention, raw_label_t_list_raw_preintervention, \
+    # expert_a_t_raw_preintervention, preintervention_raw_segment_intervention_level = cost_buffer.sample(
+    #     segment_batch_size, mode=9)
+
+    s_t_raw_preintervention, a_t_raw_preintervention, r_t_raw_preintervention, terminal_t_raw_preintervention, expert_only_s_t_raw_preintervention, \
+    s_t_1_raw_preintervention, mean_label_t_raw_preintervention, raw_label_t_list_raw_preintervention, \
+    expert_a_t_raw_preintervention, preintervention_raw_segment_intervention_level, _ = cost_buffer.sample_combined(
+        [3, 3], [224, 32])
+    is_preint_1 = np.concatenate([np.zeros((224, )), np.ones((32,))], axis=0)
+
+    supervision_thresholds_1 = np.max(preintervention_raw_segment_intervention_level, axis=1)
+    segment_noise_scale_1 = np.clip(np.random.uniform(0, 0.2, size=(segment_batch_size, 1, 1)), 0, 1)
+    segment_noise_scale_1 = np.repeat(segment_noise_scale_1, a_t_raw_preintervention.shape[1], axis=1)
+    segment_noise_scale_1 = np.repeat(segment_noise_scale_1, a_t_raw_preintervention.shape[2], axis=2)
+    action_noise_1 = tf.clip_by_value(tf.random.normal(segment_noise_scale_1.shape) * segment_noise_scale_1,
+                                      -segment_noise_scale_1 * 2.5, segment_noise_scale_1 * 2.5)
+    raw_noisy_a_t_preintervention_1 = tf.clip_by_value(a_t_raw_preintervention + action_noise_1, -1, 1)
+    noisy_a_t_preintervention_1 = np.reshape(raw_noisy_a_t_preintervention_1, [-1, policy.action_dim]).astype(
+        np.float32)
+
+    s_t_raw_preintervention_2, a_t_raw_preintervention_2, r_t_raw_preintervention_2, terminal_t_raw_preintervention_2, expert_only_s_t_raw_preintervention_2, \
+    s_t_1_raw_preintervention_2, mean_label_t_raw_preintervention_2, raw_label_t_list_raw_preintervention_2, \
+    expert_a_t_raw_preintervention_2, preintervention_raw_segment_intervention_level_2, _, _ = cost_buffer.sample_preint(
+        segment_batch_size, supervision_thresholds_1, is_preint_1, np.zeros_like(is_preint_1),  preint_include_eq=True, all_legal=True)
+
+    segment_noise_scale_2 = np.clip(np.random.uniform(0, 0.2, size=(segment_batch_size, 1, 1)), 0, 1)
+    segment_noise_scale_2 = np.repeat(segment_noise_scale_2, a_t_raw_preintervention_2.shape[1], axis=1)
+    segment_noise_scale_2 = np.repeat(segment_noise_scale_2, a_t_raw_preintervention_2.shape[2], axis=2)
+    action_noise_2 = tf.clip_by_value(tf.random.normal(segment_noise_scale_2.shape) * segment_noise_scale_2,
+                                      -segment_noise_scale_2 * 2.5, segment_noise_scale_2 * 2.5)
+    raw_noisy_a_t_preintervention_2 = tf.clip_by_value(a_t_raw_preintervention_2 + action_noise_2, -1, 1)
+    noisy_a_t_preintervention_2 = np.reshape(raw_noisy_a_t_preintervention_2, [-1, policy.action_dim]).astype(
+        np.float32)
+
+    s_t_raw_preintervention_3, a_t_raw_preintervention_3, r_t_raw_preintervention_3, terminal_t_raw_preintervention_3, expert_only_s_t_raw_preintervention_3, \
+    s_t_1_raw_preintervention_3, mean_label_t_raw_preintervention_3, raw_label_t_list_raw_preintervention_3, \
+    expert_a_t_raw_preintervention_3, preintervention_raw_segment_intervention_level_3, _ = cost_buffer.sample_combined(
+        [3, 3], [224, 32])
+
+    segment_noise_scale_3 = np.clip(np.random.normal(0, 0.2, size=(segment_batch_size, 1, 1)), 0, 1)
+    segment_noise_scale_3 = np.repeat(segment_noise_scale_3, a_t_raw_preintervention_3.shape[1], axis=1)
+    segment_noise_scale_3 = np.repeat(segment_noise_scale_3, a_t_raw_preintervention_3.shape[2], axis=2)
+    action_noise_3 = tf.clip_by_value(tf.random.normal(segment_noise_scale_3.shape) * segment_noise_scale_3,
+                                      -segment_noise_scale_3 * 2.5, segment_noise_scale_3 * 2.5)
+    raw_noisy_a_t_preintervention_3 = tf.clip_by_value(a_t_raw_preintervention_3 + action_noise_3, -1, 1)
+    noisy_a_t_preintervention_3 = np.reshape(raw_noisy_a_t_preintervention_3, [-1, policy.action_dim]).astype(
+        np.float32)
+
+    is_preint_2 = np.zeros((256, ))#(np.mean(raw_label_t_list_raw_preintervention_2, axis=1) == 1).astype(np.float32)
+
+
+    supervision_thresholds_2 = np.max(preintervention_raw_segment_intervention_level_2, axis=1)
+    supervision_thresholds_3 = np.max(preintervention_raw_segment_intervention_level_3, axis=1)
+
+    is_equal_preint = (is_preint_1 * is_preint_2) * (
+            supervision_thresholds_2 == supervision_thresholds_1).astype(np.float32)
+
+    s_t_raw = np.concatenate([s_t_raw_preintervention,
+                              s_t_raw_preintervention_2,
+                              s_t_raw_preintervention_3], axis=0)
+    s_t = np.reshape(s_t_raw, [-1, policy.state_dim[0]])
+
+    a_t_noisy = np.concatenate([noisy_a_t_preintervention_1,
+                                noisy_a_t_preintervention_2,
+                                noisy_a_t_preintervention_3], axis=0)
+
+    noisy_cost_s_t, cost_distribution, max_ent_loss = policy.current_cost_model([s_t, a_t_noisy])
+
+    noisy_estimated_cost_reshaped = tf.reshape(noisy_cost_s_t, [s_t_raw.shape[0], policy.args.segment_length])
+    noisy_estimated_cost_segment = tf.reduce_sum(noisy_estimated_cost_reshaped,
+                                                 axis=1)  # prevent instability issues ...
+    noisy_estimated_intervention_probability = noisy_estimated_cost_segment / policy.args.segment_length
+    noisy_estimated_cost_1, noisy_estimated_cost_2, noisy_estimated_cost_3 = tf.split(
+        noisy_estimated_intervention_probability, 3, axis=0)
+
+    true_cost_no_noise_1, _ = error_function(expert_a_t_raw_preintervention, raw_noisy_a_t_preintervention_1)
+    true_cost_no_noise_2, _ = error_function(expert_a_t_raw_preintervention_2, raw_noisy_a_t_preintervention_2)
+    true_cost_no_noise_3, _ = error_function(expert_a_t_raw_preintervention_3, raw_noisy_a_t_preintervention_3)
+
+    true_sample_noisy_inbetween_vs_noisy_preint = np.mean(true_cost_no_noise_2 >= true_cost_no_noise_1)
+    true_sample_noisy_inbetween_vs_no_noise_inbetween = np.mean(true_cost_no_noise_1 >= true_cost_no_noise_3)
+
+    print("Noisy vs Noisy preference ratio: ", np.mean(true_sample_noisy_inbetween_vs_noisy_preint))
+    print("Noisy vs No Noise preference ratio: ", np.mean(true_sample_noisy_inbetween_vs_no_noise_inbetween))
+
+    coef = 30
+    preference_capped_loss, _, _ = policy.get_preference_loss_true_v2(supervision_thresholds_1,
+                                                                    supervision_thresholds_2,
+                                                                    noisy_estimated_cost_1,
+                                                                    noisy_estimated_cost_2,
+                                                                    true_cost_no_noise_1, true_cost_no_noise_2,
+                                                                    None, None,
+                                                                    is_preint_1, is_equal_preint, coef=coef,
+                                                                    sanity_check=False)
+
+    preference_loss, _, _ = policy.get_preference_loss_true_v3(supervision_thresholds_1,
+                                                             supervision_thresholds_2,
+                                                             noisy_estimated_cost_1,
+                                                             noisy_estimated_cost_2,
+                                                             true_cost_no_noise_1, true_cost_no_noise_2, None, None,
+                                                             is_preint_1, is_equal_preint,
+                                                             0, 0, coef=coef, sanity_check=False)
+
+    preference_noisy_vs_not_noisy_capped_loss, _, _ = policy.get_preference_loss_true_v2(supervision_thresholds_1,
+                                                                                       supervision_thresholds_3,
+                                                                                       noisy_estimated_cost_3,
+                                                                                       noisy_estimated_cost_1,
+                                                                                       true_cost_no_noise_3,
+                                                                                       true_cost_no_noise_1, None,
+                                                                                       None,
+                                                                                       is_preint_1, is_equal_preint,
+                                                                                       coef=coef,
+                                                                                       sanity_check=False)
+
+    preference_noisy_vs_not_noisy_loss, _, _ = policy.get_preference_loss_true_v3(supervision_thresholds_1,
+                                                                                supervision_thresholds_3,
+                                                                                noisy_estimated_cost_3,
+                                                                                noisy_estimated_cost_1,
+                                                                                true_cost_no_noise_3,
+                                                                                true_cost_no_noise_1, None, None,
+                                                                                is_preint_1, is_equal_preint,
+                                                                                0, 0, coef=coef, sanity_check=False)
+
+    return np.mean(preference_capped_loss), np.mean(preference_loss), np.mean(
+        preference_noisy_vs_not_noisy_capped_loss), np.mean(preference_noisy_vs_not_noisy_loss)

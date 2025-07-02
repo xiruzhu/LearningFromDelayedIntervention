@@ -105,9 +105,7 @@ def main():
     cost_buffer.verify_inbetween(error_function)
     cost_buffer.verify_expert(error_function)
 
-    quit()
-
-    if args.intervention_loss:
+    if args.intervention_loss and args.cost_version != 2: #2 is BC and does not require cost function training
         if args.cost_only == 0:
             print("Attempting to load data ...")
             imitation_policy.current_cost_model.load_weights("../data/" + env_name + "_cost_model/cost_model_delay_" + str(args.intervention_delay) + "_70_" + str(args.cost_version) + "_1_v" + str(args.buffer_id) + "_mod_" + str(int(args.coefficient)) +  "_bias_" + str(0.0) + "_l2_" + str(args.l2) + "_seed_" + str(args.seed))
@@ -122,7 +120,7 @@ def main():
                     verbose=True
                 else:
                     verbose=False
-                cost_loss, additional_loss = imitation_policy.train_step_cost_true_v5(cost_buffer, error_function, expert_policy=expert_policy, verbose=verbose)
+                cost_loss, additional_loss = imitation_policy.train_step_cost_core(cost_buffer, error_function, expert_policy=expert_policy, verbose=verbose)
 
                 cost_loss_list.append(cost_loss)
                 additional_loss_list.append(additional_loss)
@@ -130,15 +128,13 @@ def main():
                     print(i/(pretrain_steps * 1), np.mean(cost_loss_list))
                     tflogger.log_scalar("Cost Training/loss", np.mean(cost_loss_list), i)
                     tflogger.log_scalar("Cost Training/additional_loss", np.mean(additional_loss_list), i)
-                    # cost_loss = imitation_policy.train_step_cost(cost_buffer, verbose=True, expert_policy=expert_policy)
-
                     additional_loss_list = []
                     cost_loss_list = []
                 if i % 5000 == 0 and i > 0:
                     evaluation.special_evaluation(args, imitation_policy, validation_cost_buffer, tflogger, "eval_mode_2", i, 2, error_function)
                     evaluation.special_evaluation(args, imitation_policy, validation_cost_buffer, tflogger, "eval_mode_3", i, 3, error_function)
 
-                    preference_loss_capped, preference_loss, preference_noisy_loss_capped, preference_noisy_loss = imitation_policy.evaluate_preference_loss(cost_buffer, error_function)
+                    preference_loss_capped, preference_loss, preference_noisy_loss_capped, preference_noisy_loss = evaluation.evaluate_preference_loss(imitation_policy, cost_buffer, error_function)
                     tflogger.log_scalar("Cost Training/raw_preference_loss", preference_loss, i)
                     tflogger.log_scalar("Cost Training/capped_preference_loss", preference_loss_capped, i)
                     tflogger.log_scalar("Cost Training/raw_preference_random_loss", preference_noisy_loss, i)
@@ -153,7 +149,7 @@ def main():
             evaluation.special_evaluation(args, imitation_policy, validation_cost_buffer, tflogger, "eval_mode_2", i, 2, error_function)
             evaluation.special_evaluation(args, imitation_policy, validation_cost_buffer, tflogger, "eval_mode_3", i, 3, error_function)
 
-            preference_loss_capped, preference_loss, preference_noisy_loss_capped, preference_noisy_loss = imitation_policy.evaluate_preference_loss(cost_buffer, error_function)
+            preference_loss_capped, preference_loss, preference_noisy_loss_capped, preference_noisy_loss = evaluation.evaluate_preference_loss(imitation_policy, cost_buffer, error_function)
             tflogger.log_scalar("Cost Training/raw_preference_loss", preference_loss, i)
             tflogger.log_scalar("Cost Training/capped_preference_loss", preference_loss_capped, i)
             tflogger.log_scalar("Cost Training/raw_preference_random_loss", preference_noisy_loss, i)
@@ -161,7 +157,7 @@ def main():
             print("Sampled Error: ", preference_loss, "Sampled Error Capped: ", preference_loss_capped)
             print("Sampled Random Segment Error: ", preference_noisy_loss, "Sampled Error Random Segment Capped: ",preference_noisy_loss_capped)
             print("Done pretraining cost model...")
-
+    quit()
 
     #value current cost policy for fun ...
     cost_loss_list= []
@@ -339,9 +335,14 @@ def main():
 
         frame_number += 1
 
-        policy_loss, bc_loss, cost_loss = imitation_policy.train_step_actor_v2(None, cost_buffer, expert_policy)
-        policy_loss_list.append(policy_loss)
-        bc_loss_list.append(bc_loss)
+        if args.cost_version == 2:
+            bc_loss = imitation_policy.pretrain_step_actor(cost_buffer) #BC ONLY
+            policy_loss_list.append(0)
+            bc_loss_list.append(bc_loss)
+        else:
+            policy_loss, bc_loss, cost_loss = imitation_policy.train_step_actor(None, cost_buffer, expert_policy) #With Cost
+            policy_loss_list.append(policy_loss)
+            bc_loss_list.append(bc_loss)
 
 
         cost_loss_list.append(cost_loss)
