@@ -458,6 +458,10 @@ def evaluate_preference_loss(policy, cost_buffer, error_function):
 
 
 def simple_evaluation(args, env, actor, noisy_actions=0):
+    """
+    Samples trajectory with noise(if applicable)
+    The evaluation only looks at the reward collected for the trajectory
+    """
     eval_rew = 0
     eval_len = 0
     current_state = env.reset()
@@ -479,6 +483,7 @@ def simple_evaluation(args, env, actor, noisy_actions=0):
 
 
 def special_evaluation_state(actor, cost_buffer, error_function, mode=3):
+
     accuracy_type_1 = 0
     accuracy_type_1_total = 0
     accuracy_type_2 = 0
