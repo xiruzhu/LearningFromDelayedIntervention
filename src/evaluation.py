@@ -327,12 +327,12 @@ def special_evaluation(args, actor, cost_buffer, tflogger, name, frame_num, mode
     print("-----------------------------------------")
 
 def evaluate_preference_loss(policy, cost_buffer, error_function):
+    """
+    Evaluates the cost model's performance with trained policy
+    Uses randomly sampled noise and checks how well it can predict the true cost
+    """
+
     segment_batch_size = 256
-    # segment_batch_size = 4000
-    # s_t_raw_preintervention, a_t_raw_preintervention, r_t_raw_preintervention, terminal_t_raw_preintervention, expert_only_s_t_raw_preintervention, \
-    # s_t_1_raw_preintervention, mean_label_t_raw_preintervention, raw_label_t_list_raw_preintervention, \
-    # expert_a_t_raw_preintervention, preintervention_raw_segment_intervention_level = cost_buffer.sample(
-    #     segment_batch_size, mode=9)
 
     s_t_raw_preintervention, a_t_raw_preintervention, r_t_raw_preintervention, terminal_t_raw_preintervention, expert_only_s_t_raw_preintervention, \
     s_t_1_raw_preintervention, mean_label_t_raw_preintervention, raw_label_t_list_raw_preintervention, \
@@ -425,7 +425,7 @@ def evaluate_preference_loss(policy, cost_buffer, error_function):
                                                                     is_preint_1, is_equal_preint, coef=coef,
                                                                     sanity_check=False)
 
-    preference_loss, _, _ = policy.get_preference_loss_true_v3(supervision_thresholds_1,
+    preference_loss, _, _ = policy.get_preference_loss_true_v8(supervision_thresholds_1,
                                                              supervision_thresholds_2,
                                                              noisy_estimated_cost_1,
                                                              noisy_estimated_cost_2,
@@ -444,7 +444,7 @@ def evaluate_preference_loss(policy, cost_buffer, error_function):
                                                                                        coef=coef,
                                                                                        sanity_check=False)
 
-    preference_noisy_vs_not_noisy_loss, _, _ = policy.get_preference_loss_true_v3(supervision_thresholds_1,
+    preference_noisy_vs_not_noisy_loss, _, _ = policy.get_preference_loss_true_v8(supervision_thresholds_1,
                                                                                 supervision_thresholds_3,
                                                                                 noisy_estimated_cost_3,
                                                                                 noisy_estimated_cost_1,
@@ -455,3 +455,24 @@ def evaluate_preference_loss(policy, cost_buffer, error_function):
 
     return np.mean(preference_capped_loss), np.mean(preference_loss), np.mean(
         preference_noisy_vs_not_noisy_capped_loss), np.mean(preference_noisy_vs_not_noisy_loss)
+
+
+def simple_evaluation(args, env, actor, noisy_actions=0):
+    eval_rew = 0
+    eval_len = 0
+    current_state = env.reset()
+
+    for i in range(args.max_eps_len):
+        raw_action, _ = actor.get_current_action(np.array([current_state]), verbose=True, noisy=False)
+        if noisy_actions > 0:
+            action = np.clip(raw_action + np.clip(np.random.normal(loc=0, scale=noisy_actions, size=raw_action.shape),
+                                                  -noisy_actions * 2.5, noisy_actions * 2.5), -1, 1)
+        else:
+            action = raw_action
+        next_frame, reward, terminal, info = env.step(action)
+        current_state = next_frame
+        eval_len += 1
+        eval_rew += reward
+        if terminal:
+            break
+    return eval_rew, eval_len

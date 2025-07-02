@@ -5,27 +5,7 @@ import utils, td3, core_network
 import pickle
 import json
 import evaluation
-
-global_error_scale_var = 0.3
-def error_function(a, b):
-    """
-    Oracle Error Cost Function to calculate error per action. Error is capped to [0, 1]
-    """
-    if len(a.shape) == 1:
-        raw_error = np.mean((a - b) ** 2)
-        output = np.clip(raw_error, 0, global_error_scale_var)/global_error_scale_var, raw_error
-    elif len(a.shape) == 2:
-        raw_error = np.mean((a - b) ** 2, axis=1)
-        output = np.clip(raw_error, 0, global_error_scale_var)/global_error_scale_var, raw_error
-    elif len(a.shape) == 3:
-        error = np.mean(np.clip(np.mean((a - b) ** 2, axis=2), 0, global_error_scale_var)/global_error_scale_var, axis=1)
-        raw_error = np.clip(np.mean((a - b) ** 2, axis=2), 0, global_error_scale_var)/global_error_scale_var
-        output = error, raw_error
-    elif len(a.shape) == 4:
-        error = np.mean(np.mean(np.clip(np.mean((a - b) ** 2, axis=3), 0, global_error_scale_var)/global_error_scale_var, axis=2), axis=1)
-        raw_error = np.clip(np.mean((a - b) ** 2, axis=2), 0, global_error_scale_var)/global_error_scale_var
-        output = error, raw_error
-    return output
+from utils import error_function
 
 def main():
     args = utils.get_args()
@@ -157,7 +137,6 @@ def main():
             print("Sampled Error: ", preference_loss, "Sampled Error Capped: ", preference_loss_capped)
             print("Sampled Random Segment Error: ", preference_noisy_loss, "Sampled Error Random Segment Capped: ",preference_noisy_loss_capped)
             print("Done pretraining cost model...")
-    quit()
 
     #value current cost policy for fun ...
     cost_loss_list= []
@@ -354,7 +333,6 @@ def main():
             policy_loss_list = []
             bc_loss_list = []
             cost_loss_list = []
-
 
 
 if __name__ == "__main__":

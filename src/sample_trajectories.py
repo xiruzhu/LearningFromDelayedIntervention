@@ -1,4 +1,13 @@
 import numpy as np
+import gym
+import tensorflow as tf
+import utils, td3, core_network
+import pickle
+import json
+from utils import error_function
+import evaluation
+import core_network
+
 
 def sample_episode(args, env, cost_buffer, actor, expert, count, intervention_threshold, policy_noise, error_function,
                    supervision_window=30, preintervention_interval=30, expert_intervention_length=30,
@@ -162,3 +171,199 @@ def sample_episode(args, env, cost_buffer, actor, expert, count, intervention_th
               intervention_threshold)
         return eps_rew, eps_len, intervention_steps, intervention_freq, ensemble_uncertainty_list, intervention_delay_list,
     return eps_rew, eps_len, 0, 0, ensemble_uncertainty_list, intervention_delay_list
+
+
+def main():
+    args = utils.get_args()
+    tf.random.set_seed(args.seed)
+    np.random.seed(args.seed)
+
+    env = gym.make(args.env_id)
+    env = env.env
+
+    ob_space = env.observation_space
+    ac_space = env.action_space
+
+    global global_error_scale_var
+    global_error_scale_var = args.error_function_cap
+    expert_policy = td3.actor(args, ob_space.shape, ac_space.shape[-1])
+    intervention_thresholds_list = json.loads(args.intervention_thresholds)
+
+    eval_policy_noise = 0.2
+    target_sampled_expert_steps = 800
+    if args.env_id == "Humanoid-v2":
+        env_name = "humanoid"
+    elif args.env_id == "Walker2d-v2":
+        env_name = "walker"
+    elif args.env_id == "HalfCheetah-v2":
+        env_name = "halfcheetah"
+    elif args.env_id == "Hopper-v2":
+        env_name = "hopper"
+        eval_policy_noise = 0.1
+    elif args.env_id == "Ant-v2":
+        env_name = "ant"
+    else:
+        print("Error env")
+        quit()
+    for i in range(len(intervention_thresholds_list)):
+        intervention_thresholds_list[i] = int(intervention_thresholds_list[i] * args.segment_length / 30)
+
+    expert_policy.current_model.load_weights(expert_policy.args.checkpoint_dir + "/" + env_name + "_expert_policy" + "/actor_current_network_" + str(0))
+    old_cost_buffer = pickle.load(open("../data/original_" + env_name + "_no_noise_initial_cost_data_delay_1_v5_0.pkl", "rb"))
+    cost_buffer = utils.TrajectorySegmentBuffer_v5(args, size=10000)
+    cost_buffer.reinit(old_cost_buffer, error_function)
+
+    cost_buffer_validation = utils.TrajectorySegmentBuffer_v5(args, size=10000)
+    cost_buffer_validation.reinit(old_cost_buffer, error_function)
+
+
+    print(cost_buffer.raw_data_count)
+    print(cost_buffer.expert_single_state_count)
+
+    imitation_policy = core_network.actor(args, ob_space.shape, ac_space.shape[-1])
+
+    tflogger = utils.tensorflowboard_logger(args.log_dir + args.custom_id, args)
+    frame_number = 0
+    pretrain_steps = int(100000 * (1 + args.cost_loss_bias))
+    total_expert_intervention = 0
+
+    bc_loss_list = []
+    intervention_freq_list = []
+    sampled_length_list = []
+    average_delay_list = []
+    total_expert_intervention = 0
+    total_sampled_steps = 0
+
+    initial_imitation_policy = core_network.actor(args, ob_space.shape, ac_space.shape[-1])
+
+    if args.train_initial_model:
+        for i in range(100000):
+            bc_loss = initial_imitation_policy.pretrain_step_actor(cost_buffer)
+            bc_loss_list.append(bc_loss)
+            if i % 10000 == 0 and i > 0:
+                print(i / 100000, np.mean(bc_loss_list[-10000]))
+                simple_eval_rew_list = []
+                simple_eval_len_list = []
+                for j in range(10):
+                    eval_rew, eval_len = evaluation.simple_evaluation(args, env, initial_imitation_policy, noisy_actions=0)
+                    simple_eval_rew_list.append(eval_rew)
+                    simple_eval_len_list.append(eval_len)
+                print(i / 100000, np.mean(simple_eval_rew_list), np.mean(simple_eval_len_list))
+
+        tflogger.log_scalar("BC_loss", np.mean(bc_loss), frame_number)
+        # Load a pretrained imitation policy ...
+        initial_imitation_policy.current_model_list[0].save_weights(
+            "../data/" + env_name + "_no_noise_current_actor_network_0_v2_" + str(0))
+
+    initial_imitation_policy.current_model_list[0].load_weights(
+        "../data/" + env_name + "_no_noise_current_actor_network_0_v2_" + str(0))
+    # simple_eval_rew_list = []
+    # simple_eval_len_list = []
+    for j in range(len(intervention_thresholds_list)):
+        collected_data = 0
+        count = 0
+        while collected_data < target_sampled_expert_steps:
+            sampled_rew, sampled_len, expert_intervention_steps, intervention_freq, ensemble_uncertainty, average_delay = sample_episode(
+                args, env,
+                cost_buffer_validation,
+                initial_imitation_policy,
+                expert_policy, count,
+                intervention_thresholds_list[j],
+                policy_noise=eval_policy_noise, preintervention_interval=args.segment_length)
+            intervention_freq_list.append(intervention_freq)
+            sampled_length_list.append(sampled_len)
+            collected_data += expert_intervention_steps
+            total_sampled_steps += sampled_len
+            count += 1
+            average_delay_list.extend(average_delay)
+            print("Progress: ", intervention_thresholds_list[j], collected_data / target_sampled_expert_steps,
+                  np.sum(intervention_freq_list))
+
+        collected_data = 0
+        count = 0
+
+        while collected_data < target_sampled_expert_steps:
+            sampled_rew, sampled_len, expert_intervention_steps, intervention_freq, ensemble_uncertainty, average_delay = sample_episode(
+                args, env,
+                cost_buffer,
+                initial_imitation_policy,
+                expert_policy, count,
+                intervention_thresholds_list[j],
+                policy_noise=eval_policy_noise,
+                preintervention_interval=args.segment_length)
+            intervention_freq_list.append(intervention_freq)
+            sampled_length_list.append(sampled_len)
+            collected_data += expert_intervention_steps
+            total_sampled_steps += sampled_len
+            count += 1
+            average_delay_list.extend(average_delay)
+            print("Progress Expert: ", intervention_thresholds_list[j],
+                  collected_data / target_sampled_expert_steps, np.sum(intervention_freq_list))
+
+            # if expert_intervention_steps % args.segment_length != 0 and sampled_len < args.max_eps_len:
+            #     raise ("Error here!")
+
+            if expert_intervention_steps > 0:
+                for i in range(3000 + int(15000 * expert_intervention_steps / target_sampled_expert_steps)):
+                    bc_loss = initial_imitation_policy.pretrain_step_actor(cost_buffer)
+                # if i % 1000 == 0 and i > 0:
+                #     print(i/20000)
+            # simple_eval_rew_list = []
+            # simple_eval_len_list = []
+            # for j in range(10):
+            #     eval_rew, eval_len = simple_evaluation(args, env, initial_imitation_policy, noisy_actions=0)
+            #     simple_eval_rew_list.append(eval_rew)
+            #     simple_eval_len_list.append(eval_len)
+            # print(i/2000, "Rew:", np.mean(simple_eval_rew_list), "Length: ", np.mean(simple_eval_len_list))
+
+        print("Retraining ... ", j / len(intervention_thresholds_list))
+
+        print(cost_buffer_validation.preintervention_segment_count)
+        print(cost_buffer_validation.raw_data_count)
+        print(cost_buffer_validation.expert_single_state_count)
+
+        print(cost_buffer.preintervention_segment_count)
+        print(cost_buffer.raw_data_count)
+        print(cost_buffer.expert_single_state_count)
+
+        # new_cost_buffer_validation = utils.TrajectorySegmentBuffer_v5(args, size=10000)
+        # new_cost_buffer_validation.reinit(cost_buffer, error_function)
+        # cost_buffer = new_cost_buffer_validation
+
+        cost_buffer.verify_preint(error_function)
+        cost_buffer.verify_inbetween(error_function)
+        cost_buffer.verify_expert(error_function)
+
+        if j == len(intervention_thresholds_list) - 1:
+            # collected_data = 0
+            # count = 0
+            # while collected_data < target_sampled_no_intervention_steps * 5:
+            #     sampled_rew, sampled_len = sample_no_expert(args, env, cost_buffer,
+            #                                                              initial_imitation_policy, expert_policy, policy_noise=0.2, max_threshold=30)
+
+            #     collected_data += sampled_len
+            #     count += 1
+            #     if count % 10 == 0:
+            #         print("Progress No Expert: ", intervention_thresholds_list[j], collected_data/target_sampled_no_intervention_steps)
+
+            # collected_data = 0
+            # count = 0
+            # while collected_data < target_sampled_no_intervention_steps * 5:
+            #     sampled_rew, sampled_len = sample_no_expert(args, env, cost_buffer_validation,
+            #                                                              initial_imitation_policy, expert_policy, policy_noise=0.2, max_threshold=30)
+
+            #     collected_data += sampled_len
+            #     count += 1
+            #     if count % 10 == 0:
+            #         print("Progress No Expert: ", intervention_thresholds_list[j], collected_data/target_sampled_no_intervention_steps)
+
+            pickle.dump(cost_buffer,
+                        open("../data/" + env_name + "_training_cost_no_expert_noise_delay_v3_" + str(
+                            args.intervention_delay) + "_length_" + str(args.segment_length) + "_v50_0.pkl",
+                             "wb"))
+            pickle.dump(cost_buffer_validation, open(
+                "../data/" + env_name + "_validation_cost_no_expert_noise_delay_v3_" + str(
+                    args.intervention_delay) + "_length_" + str(args.segment_length) + "_v50_0.pkl", "wb"))
+
+        # else:
+

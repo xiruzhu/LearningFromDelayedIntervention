@@ -242,6 +242,40 @@ class actor:
         return preference_loss, l2_loss, 0
 
 
+    def get_preference_loss_true_v2(self,
+                                    supervision_threshold_1, supervision_threshold_2,
+                                    noisy_estimated_cost_1, noisy_estimated_cost_2,
+                                    true_cost_1, true_cost_2,
+                                    noisy_true_cost_1, noisy_true_cost_2,
+                                    is_preint_1, is_equal, coef=30, sanity_check=True):
+        """
+        True Preference -> Assumes full knowledge of the true cost of both edges
+        Outputs the preference loss between the two but capped (E.g loss only penalizes when segment 2 fails to be greater than segment 1
+        """
+        true_2_gt_1 = (true_cost_2 > true_cost_1).astype(np.float32)
+        true_1_gt_2 = (true_cost_1 > true_cost_2).astype(np.float32)
+        if sanity_check:
+            for i in range(true_cost_1.shape[0]):
+                if true_2_gt_1[i] < 1:
+                    print(i, true_cost_1[i], true_cost_2[i], is_preint_1[i])
+                    quit()
+
+        modified_cost_1 = tf.clip_by_value(noisy_estimated_cost_1 * coef, 0, 50)
+        modified_cost_2 = tf.clip_by_value(noisy_estimated_cost_2 * coef, 0, 50)
+
+        prob_2_gt_1 = tf.exp(modified_cost_2) / (tf.exp(modified_cost_2) + tf.exp(modified_cost_1))
+        prob_1_gt_2 = 1 - prob_2_gt_1
+
+        capped_prob_2_gt_1 = tf.clip_by_value(prob_2_gt_1, 0, 0.50) / 0.50
+        capped_prob_1_gt_2 = tf.clip_by_value(prob_1_gt_2, 0, 0.50) / 0.50
+
+        preference_loss = true_2_gt_1 * (capped_prob_2_gt_1 - 1) ** 2 + true_1_gt_2 * (capped_prob_1_gt_2 - 1) ** 2
+
+        equal_preference_loss = 0
+
+        estimated_cost_l2 = (noisy_estimated_cost_2) ** 2
+        return preference_loss, equal_preference_loss, estimated_cost_l2
+
 
     def pretrain_step_actor(self, cost_buffer):
         i = 0
