@@ -58,43 +58,17 @@ class TrajectorySegmentBuffer_v5:
         self.raw_data_count = old_buffer.raw_data_count
         self.raw_segment_count = old_buffer.raw_segment_count
 
-        # print(len(self.raw_data_buffer))
-        # for i in range(self.raw_segment_count):
-        #     print(i, len(self.raw_data_buffer[i]))
-
         self.combined_single_state_buffer = old_buffer.combined_single_state_buffer.copy()
         self.combined_single_state_count = old_buffer.combined_single_state_count
 
         self.expert_single_state_buffer = old_buffer.expert_single_state_buffer.copy()
         self.expert_single_state_count = old_buffer.expert_single_state_count
 
-        # self.preintervention_single_state_buffer = old_buffer.preintervention_single_state_buffer
-        # self.preintervention_single_state_count = old_buffer.preintervention_single_state_count
-        #
-        # self.non_expert_non_preintervention_single_state_buffer = old_buffer.non_expert_non_preintervention_single_state_buffer
-        # self.non_expert_non_preintervention_single_state_count = old_buffer.non_expert_non_preintervention_single_state_count
-        #
-        # self.non_expert_single_state_buffer = old_buffer.non_expert_single_state_buffer
-        # self.non_expert_single_state_count = old_buffer.non_expert_single_state_count
-        #
-        #
         self.combined_segment_buffer = old_buffer.combined_segment_buffer.copy()
         self.combined_segment_count = old_buffer.combined_segment_count
 
         self.expert_segment_buffer = old_buffer.expert_segment_buffer.copy()
         self.expert_segment_count = old_buffer.expert_segment_count
-
-        # self.no_intervention_segment_buffer = old_buffer.no_intervention_segment_buffer
-        # self.no_intervention_segment_count = old_buffer.no_intervention_segment_count
-
-        # self.preintervention_segment_buffer = old_buffer.preintervention_segment_buffer
-        # self.preintervention_segment_count = old_buffer.preintervention_segment_countz
-        #
-        # self.inbetween_segment_buffer = old_buffer.inbetween_segment_buffer
-        # self.inbetween_segment_count = old_buffer.inbetween_segment_count
-        #
-        # self.special_preint_buffer = old_buffer.special_preint_buffer
-        # self.special_preint_count = old_buffer.special_preint_count
 
     def generate_segment_weights(self, max_threshold):
         self.raw_data_weight_no_expert = {}
@@ -109,8 +83,6 @@ class TrajectorySegmentBuffer_v5:
 
         for idx in self.expert_segment_buffer:
             segment = self.expert_segment_buffer[idx]
-            # print(len(segment))
-            # quit()
 
             for idx_pair in segment:
                 self.raw_data_weight_all[idx_pair[0]][idx_pair[1]] += 1
@@ -118,7 +90,6 @@ class TrajectorySegmentBuffer_v5:
         for idx in self.preintervention_segment_buffer:
             segment = self.preintervention_segment_buffer[idx]
             for idx_pair in segment:
-                # print(idx_pair, len(self.raw_data_weight_no_expert[idx_pair[0]]))
                 self.raw_data_weight_no_expert[idx_pair[0]][idx_pair[1]] += 1
                 self.raw_data_weight_all[idx_pair[0]][idx_pair[1]] += 1
 
@@ -179,9 +150,7 @@ class TrajectorySegmentBuffer_v5:
             self.non_expert_segment_special_buffer[self.non_expert_segment_special_count] = \
             self.inbetween_segment_buffer[i]
             self.non_expert_segment_special_count += 1
-        # print(self.non_expert_segment_special_count, self.preintervention_segment_special_count, self.inbetween_segment_count)
-        # quit()
-        #
+
 
         self.inbetween_special_buffer = {}
         self.inbetween_special_count = 0
@@ -218,12 +187,6 @@ class TrajectorySegmentBuffer_v5:
             self.inbetween_special_segment_buffer[supervision_threshold][
                 self.inbetween_special_segment_count[supervision_threshold]] = trajectory
             self.inbetween_special_segment_count[supervision_threshold] += 1
-
-        # for key in self.inbetween_special_segment_count:
-        #     print(key, self.inbetween_special_segment_count[key])
-        # for key in self.special_preint_buffer:
-        #     print(key, self.special_preint_count[key])
-        # quit()
 
     def get_segment(self, raw_buffer_segment_indices):
         segment_s_t = []
@@ -299,7 +262,6 @@ class TrajectorySegmentBuffer_v5:
 
             group_supervision_threshold_list.append(sampled_threshold_index)
 
-            # idx = data_index_list[sampled_threshold_index]
             sampled_data_buffer = data_buffer[sampled_threshold_index]
             sampled_data_count = data_count[sampled_threshold_index]
 
@@ -498,7 +460,6 @@ class TrajectorySegmentBuffer_v5:
 
         data_entry = [s_t, a_t, r_t, terminal_t, intervention_status_t, s_t_1, label_t, expert_a_t,
                       intervention_threshold]
-        # print(s_t_1.shape, s_t_1)
 
         current_trajectory_index = len(self.raw_data_buffer[self.raw_segment_count])
         self.raw_data_buffer[self.raw_segment_count][current_trajectory_index] = data_entry
@@ -614,8 +575,6 @@ class TrajectorySegmentBuffer_v5:
                 self.special_preint_count[supervision_threshold]] = segment_indices
             self.special_preint_count[supervision_threshold] += 1
 
-            # print(supervision_threshold, self.special_preint_count[supervision_threshold])
-
     def verify_preint(self, error_function):
         error_count = 0
         for i in range(self.preintervention_segment_count):
@@ -645,7 +604,7 @@ class TrajectorySegmentBuffer_v5:
                 intervention_threshold_list.append(intervention_threshold)
 
                 true_error, _ = error_function(a_t,
-                                               expert_a_t)  # np.clip(np.mean(np.abs(a_t - expert_a_t)), 0, 0.5) / 0.5
+                                               expert_a_t)
                 true_error_list.append(true_error)
 
                 expert_threshold_list.append(intervention_status_t)
@@ -664,7 +623,6 @@ class TrajectorySegmentBuffer_v5:
             intervention_status_list.append(intervention_status_t)
 
             true_error, _ = error_function(a_t, expert_a_t)
-            # true_error = np.clip(np.mean(np.abs(a_t - expert_a_t)), 0, 0.5) / 0.5
             true_error_list.append(true_error)
 
             expert_threshold_list.append(intervention_status_t)
@@ -675,8 +633,6 @@ class TrajectorySegmentBuffer_v5:
             if np.sum(true_error_list) >= supervision_threshold and np.sum(true_error_list) < supervision_threshold + 2:
                 return True
             else:
-                # if supervision_threshold > np.sum(true_error_list) + 1:
-
                 trajectory = self.raw_data_buffer[segment_indices[j][0]]
                 for step in trajectory:
                     s_t, a_t, r_t, terminal_t, intervention_status_t, s_t_1, label_t, expert_a_t, intervention_threshold = \
@@ -686,8 +642,6 @@ class TrajectorySegmentBuffer_v5:
                     print(step, step_error, intervention_threshold, intervention_status_t, label_t)
                 print(np.sum(true_error_list), segment_indices[0][0], segment_indices[0][1], supervision_threshold,
                       np.mean(intervention_threshold_list))
-                # for i in range(self.raw_segment_count):
-                #     print(i, len(self.raw_data_buffer[i]))
                 print("Preint Error!")
                 raise ("Error!")
                 quit()
@@ -707,8 +661,6 @@ class TrajectorySegmentBuffer_v5:
                 print(np.sum(true_error_list), segment_indices[0][0], segment_indices[0][1], supervision_threshold,
                       np.mean(intervention_threshold_list))
 
-                # for i in range(self.raw_segment_count):
-                #     print(i, len(self.raw_data_buffer[i]))
                 print("Inbetween Error!")
                 quit()
 
@@ -1008,7 +960,6 @@ class TrajectorySegmentBuffer_v5:
                 if not selected_threshold is None:
                     # Update the new data
                     for k in range(self.args.segment_length):
-                        # intervention_threshold_list[k] = selected_threshold
                         label_t_list[k] = 1
 
                     new_segment_indices = []
@@ -1022,8 +973,6 @@ class TrajectorySegmentBuffer_v5:
                     self.trajectory_end()
                     queried_segments += 1
                 else:
-                    # for k in range(self.args.segment_length):
-                    #     intervention_threshold_list[k] = min_threshold
 
                     new_segment_indices = []
                     for k in range(self.args.segment_length):
@@ -1035,14 +984,6 @@ class TrajectorySegmentBuffer_v5:
                     self.trajectory_end()
                     queried_segments += 1
 
-                    # for k in range(self.args.segment_length):
-                    #     s_t, a_t, r_t, terminal_t, intervention_status_t, s_t_1, label_t, expert_a_t, intervention_threshold = self.raw_data_buffer[segment_indices[k][0]][segment_indices[k][1]]
-                    #     self.raw_data_buffer[segment_indices[k][0]][segment_indices[k][1]] = (s_t, a_t, r_t, terminal_t, intervention_status_t, s_t_1, label_t, expert_a_t, min_threshold)
-                    #
-                    # # for k in range(self.args.segment_length):
-                    # #     intervention_threshold_list[k] = min_threshold
-                    # new_inbetween_buffer[new_inbetween_count] = self.inbetween_segment_buffer[index]
-                    # new_inbetween_count += 1
             else:
                 new_inbetween_buffer[new_inbetween_count] = self.inbetween_segment_buffer[index]
                 new_inbetween_count += 1
@@ -1097,14 +1038,6 @@ class TrajectorySegmentBuffer_v5:
                label_t_list, label_t_raw_list, expert_a_t_list, intervention_threshold_list, trajectory_weight_list
 
     def trajectory_end(self):
-        # print("Bug Testing ... ", self.raw_segment_count, len(self.raw_data_buffer),len(self.raw_data_buffer[self.raw_segment_count]))
-        # current_trajectory = self.raw_data_buffer[self.raw_segment_count]
-        # for i in range(len(current_trajectory)):
-        #     if i + self.args.segment_length <= len(current_trajectory):
-        #         #print("Was here ... ")
-        #         self.add_segment(current_trajectory, self.raw_segment_count, i)
-        #     else:
-        #         break
         self.raw_segment_count += 1
 
 

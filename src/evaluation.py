@@ -476,3 +476,67 @@ def simple_evaluation(args, env, actor, noisy_actions=0):
         if terminal:
             break
     return eval_rew, eval_len
+
+
+def special_evaluation_state(actor, cost_buffer, error_function, mode=3):
+    accuracy_type_1 = 0
+    accuracy_type_1_total = 0
+    accuracy_type_2 = 0
+    accuracy_type_2_total = 0
+
+
+    true_gt_noisy = 0
+    estimated_gt_noisy = 0
+
+    for l in range(32):
+        s_t, a_t, _, _, intervention_status_t, _, label_t, expert_a_t, _ = cost_buffer.simple_sample(64, mode=mode)
+
+        standard_noisy_cost, _, _ = actor.current_cost_model([s_t, a_t])
+        standard_noisy_cost = np.squeeze(standard_noisy_cost)
+
+        standard_true_cost, _ = error_function(a_t, expert_a_t)
+
+        true_error_level = []
+        estimated_error_difference_raw = []
+        estimated_error_difference = []
+
+
+        for j in range(50):
+            noise = np.random.normal(0, 0.4, size=a_t.shape)
+            noisy_action = np.clip(a_t + noise, -1, 1)
+
+            noisy_true_cost, _ = error_function(noisy_action, expert_a_t)
+            noisy_cost_t, cost_distribution, max_ent_loss = actor.current_cost_model([s_t, noisy_action])
+            noisy_cost_t = np.squeeze(noisy_cost_t)
+
+            raw_estimated_error_diff = np.squeeze(standard_noisy_cost - noisy_cost_t)
+            estimated_error_diff = np.squeeze(np.abs(raw_estimated_error_diff))
+
+            for k in range(64):
+                true_error_level.append(noisy_true_cost[k])
+                estimated_error_difference_raw.append(raw_estimated_error_diff[k])
+                estimated_error_difference.append(estimated_error_diff[k])
+
+                #if noisy action is better than the current action
+                if standard_true_cost[k] > noisy_true_cost[k] + 0.01:
+                    if standard_noisy_cost[k] > noisy_cost_t[k] + 0.01:
+                        accuracy_type_1 += 1
+                    accuracy_type_1_total += 1
+                if standard_true_cost[k] < noisy_true_cost[k]- 0.01:
+                    if standard_noisy_cost[k] < noisy_cost_t[k] - 0.01:
+                        accuracy_type_2 += 1
+                    accuracy_type_2_total += 1
+
+                if noisy_cost_t[k] > standard_noisy_cost[k]:
+                    estimated_gt_noisy += 1
+
+                if noisy_true_cost[k] > standard_true_cost[k]:
+                    true_gt_noisy += 1
+
+
+
+    print("Mode: ", mode, "Greater than Accuracy: ", accuracy_type_1/accuracy_type_1_total, accuracy_type_1_total, ", Total Acc: ", (accuracy_type_1 + accuracy_type_2)/(accuracy_type_1_total + accuracy_type_2_total))
+    print("Mode: ", mode, "Less than Accuracy: ", accuracy_type_2/accuracy_type_2_total, accuracy_type_2_total)
+    print("Mode: ", mode, "Proportion True standard greater than noisy: ", true_gt_noisy/(64 * 50 * 32))
+    print("Mode: ", mode, "Proportion Estimated greater than noisy", estimated_gt_noisy/(64 * 50 * 32))
+
