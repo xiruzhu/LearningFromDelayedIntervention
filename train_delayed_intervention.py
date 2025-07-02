@@ -785,8 +785,8 @@ def main():
     print(cost_buffer.expert_single_state_count)
 
 
-    imitation_policy = netowrk_models.actor(args, ob_space.shape, ac_space.shape[-1])
-    initial_imitation_policy = netowrk_models.actor(args, ob_space.shape, ac_space.shape[-1])
+    imitation_policy = network_models.actor(args, ob_space.shape, ac_space.shape[-1])
+    initial_imitation_policy = network_models.actor(args, ob_space.shape, ac_space.shape[-1])
 
     tflogger = utils.tensorflowboard_logger(args.log_dir + args.custom_id, args)
     eps_number = 0
