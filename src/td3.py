@@ -248,8 +248,6 @@ class critic:
         l3 = tf.keras.layers.Dense(self.args.hidden,kernel_initializer=init,activation=tf.nn.relu, name=name + "_l3")(l2)
         l4 = tf.keras.layers.Dense(self.args.hidden,kernel_initializer=init,activation=tf.nn.relu, name=name + "_l4")(l3)
 
-        # l5 = tf.keras.layers.Dense(self.args.hidden,kernel_initializer=init,activation=tf.nn.relu, name=name + "_l5")(l4)
-        # l6 = tf.keras.layers.Dense(self.args.hidden,kernel_initializer=init,activation=tf.nn.relu, name=name + "_l6")(l5)
         raw_output = tf.keras.layers.Dense(1, kernel_initializer=init,activation=None, name=name + "_out")(l4)
 
         #raw_output = tf.keras.layers.Dense(1, kernel_initializer=init,activation=None, name=name + "_out")(l3)
@@ -261,24 +259,7 @@ class critic:
         l2 = tf.keras.layers.Dense(self.args.hidden,kernel_initializer=init,activation=tf.nn.relu, name=name + "_l2")(l1)
         l3 = tf.keras.layers.Dense(self.args.hidden,kernel_initializer=init,activation=tf.nn.relu, name=name + "_l3")(l2)
         l4 = tf.keras.layers.Dense(self.args.hidden,kernel_initializer=init,activation=tf.nn.relu, name=name + "_l4")(l3)
-
-        # l5 = tf.keras.layers.Dense(self.args.hidden,kernel_initializer=init,activation=tf.nn.relu, name=name + "_l5")(l4)
-        # l6 = tf.keras.layers.Dense(self.args.hidden,kernel_initializer=init,activation=tf.nn.relu, name=name + "_l6")(l5)
         raw_output = tf.keras.layers.Dense(1, kernel_initializer=init,activation=None, name=name + "_out")(l4)
-
-        # l1 = tf.keras.layers.Dense(self.args.hidden,kernel_initializer=init,activation=tf.nn.relu, name=name + "_l2_state")(state)
-        # a1 = tf.keras.layers.Dense(self.args.hidden,kernel_initializer=init,activation=tf.nn.relu, name=name + "_l2_action")(action)
-        # l2 = tf.concat((l1, a1), axis=1)
-        # l3 = tf.keras.layers.Dense(self.args.hidden,kernel_initializer=init,activation=tf.nn.relu, name=name + "_l3")(l2)
-        # l4 = tf.keras.layers.Dense(self.args.hidden,kernel_initializer=init,activation=tf.nn.relu, name=name + "_l4")(l3)
-        # raw_output = tf.keras.layers.Dense(1, kernel_initializer=init,activation=None, name=name + "_out")(l4)
-
-        # a2 = tf.keras.layers.Dense(self.args.hidden,kernel_initializer=init,activation=tf.nn.relu, name=name + "_a2")(action)
-        # a3 = tf.keras.layers.Dense(self.args.hidden,kernel_initializer=init,activation=tf.nn.relu, name=name + "_a3")(a2)
-        # combined = tf.concat((l3, a3), axis=1)
-        # raw_output = tf.keras.layers.Dense(1, kernel_initializer=init,activation=None, name=name + "_out")(combined)
-        #raw_output = tf.keras.layers.Dense(1, kernel_initializer=init, activation=None, name=name + "_out")(l3)
-
         return raw_output
 
 
