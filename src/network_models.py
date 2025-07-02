@@ -34,8 +34,6 @@ class actor:
             self.current_vars_list.append(current_vars)
             self.current_optimizer_list.append(current_optimizer)
 
-        # self.target_model, self.target_vars, self.target_optimizer = self.build_network(model_name=self.model_name + "_" + str(i) + "_target")
-
         self.huber_loss = tf.keras.losses.Huber(
             delta=1.0,
             reduction='sum_over_batch_size',
@@ -44,7 +42,6 @@ class actor:
             model_name="current")
         self.target_cost_model, self.target_cost_vars, self.target_cost_optimizer = self.build_cost(model_name="target")
 
-        # self.transition_model, self.trans_vars, self.trans_optimizer = self.build_transition_model(model_name="current")
 
     def build_cost(self, model_name="current", epsilon=1e-6):
         init = tf.keras.initializers.GlorotNormal()
@@ -53,35 +50,16 @@ class actor:
 
         l2 = tf.keras.layers.Dense(self.args.hidden, kernel_initializer=init, activation=tf.nn.relu,
                                    name=model_name + "_cost_network_1")(input_value)
-        # l2 = tf.keras.layers.LayerNormalization(axis=1)(l2)
 
         l3 = tf.keras.layers.Dense(self.args.hidden, kernel_initializer=init, activation=tf.nn.relu,
                                    name=model_name + "_cost_network_2")(l2)
-        # l3 = tf.keras.layers.LayerNormalization(axis=1)(l3)
 
         l4 = tf.keras.layers.Dense(self.args.hidden, kernel_initializer=init, activation=tf.nn.relu,
                                    name=model_name + "_cost_network_3")(l3)
-        # l4 = tf.keras.layers.LayerNormalization(axis=1)(l4)
-
         l5 = tf.keras.layers.Dense(self.args.hidden // 2, kernel_initializer=init, activation=tf.nn.relu,
                                    name=model_name + "_cost_network_4")(l4)
-        # l5 = tf.keras.layers.LayerNormalization(axis=1)(l5)
-
-        # l6 = tf.keras.layers.Dense(self.args.atoms, kernel_initializer=init, activation=None,
-        #                            name=model_name + "_cost_network_5")(l5)
-        # self.cost_labels = []
-        # for i in range(self.args.atoms - 1):
-        #     self.cost_labels.append(i/(self.args.atoms - 1))
-        # self.cost_labels.append(1)
-        # self.cost_labels = np.expand_dims(np.array(self.cost_labels), axis=0)
-        #
-        # cost_distribution = tf.nn.softmax(l6)
-        # max_entropy_loss = -tf.reduce_sum(cost_distribution * tf.math.log(cost_distribution + 1e-8), axis=1)
-        # mean_cost = tf.expand_dims(tf.reduce_sum(self.cost_labels * cost_distribution, axis=1), axis=1)
-        # current_model = tf.keras.Model(inputs=[self.state_input, action_input], outputs=[mean_cost, cost_distribution, max_entropy_loss])
 
         l6 = tf.keras.layers.Dense(1, kernel_initializer=init, activation=None, name=model_name + "_cost_network_5")(l5)
-        # mean_cost = tf.nn.relu(l6)
         mean_cost = (tf.nn.tanh(l6) + 1) / 2
         current_model = tf.keras.Model(inputs=[self.state_input, action_input],
                                        outputs=[mean_cost, mean_cost * 0, mean_cost * 0])
@@ -104,8 +82,6 @@ class actor:
 
         l2 = tf.keras.layers.Dense(self.args.hidden, kernel_initializer=init, activation=tf.nn.relu,
                                    name=model_name + "_actor_network_1")(self.state_input)
-        # l2 = tf.keras.layers.LayerNormalization(l2)
-
         l3 = tf.keras.layers.Dense(self.args.hidden, kernel_initializer=init, activation=tf.nn.relu,
                                    name=model_name + "_actor_network_2")(l2)
         l4 = tf.keras.layers.Dense(self.args.hidden, kernel_initializer=init, activation=tf.nn.relu,
@@ -121,9 +97,6 @@ class actor:
         return current_model, current_vars, optimizer
 
     def get_random_action(self):
-        # action_mean = np.random.uniform(-1, 1, size=(1, self.action_dim))
-        # action_std = np.random.uniform(0.01, 0.2, size=(1, self.action_dim))
-        # return np.tanh(np.random.normal(loc=action_mean, scale=action_std)), action_mean, action_std
         return np.random.uniform(-1, 1, size=(self.action_dim))
 
     def get_current_action(self, state, verbose=False, noisy=False):
@@ -142,37 +115,6 @@ class actor:
             return noisy_actions, action_std
         else:
             return action.numpy(), action_std
-
-    def get_preference_loss(self,
-                            supervision_threshold_1, supervision_threshold_2,
-                            noisy_estimated_cost_1, noisy_estimated_cost_2,
-                            true_cost_1, true_cost_2,
-                            noisy_true_cost_1, noisy_true_cost_2,
-                            is_preint_1, is_equal,
-                            segment_1_upper_cap_error, segment_2_upper_cap_error, coef=30):
-
-        is_equal = np.squeeze(is_equal)
-        # error_offset_1 = np.squeeze(segment_1_upper_cap_error)
-        # error_offset_2 = np.squeeze(segment_2_upper_cap_error)
-
-        # noisy_estimated_cost_1 = tf.stop_gradient(noisy_estimated_cost_1)
-
-        offset_estimated_cost_1_up = tf.clip_by_value((noisy_estimated_cost_1) * coef, 0, 50)
-        offset_estimated_cost_2_down = tf.clip_by_value((noisy_estimated_cost_2) * coef, 0, 50)
-
-        prob_2_gt_1 = tf.exp(offset_estimated_cost_2_down) / (
-                tf.exp(offset_estimated_cost_1_up) + tf.exp(offset_estimated_cost_2_down))
-        clipped_prob_2_gt_1 = tf.clip_by_value(prob_2_gt_1, 0, 0.5) / 0.5
-
-        preference_loss = -(1 - is_equal) * (tf.math.log(clipped_prob_2_gt_1 + 1e-8))
-        equal_preference_loss = 0
-        estimated_cost_l2 = (1 - is_equal) * (noisy_estimated_cost_2 ** 2)
-        #
-        # for i in range(true_cost_1.shape[0]):
-        #     if true_cost_1[i] >= true_cost_2[i] and not is_equal[i]:
-        #         print(i, true_cost_1[i], true_cost_2[i])
-
-        return preference_loss, equal_preference_loss, estimated_cost_l2
 
     def evaluate_preference_sampling(self, cost_buffer):
         segment_batch_size = 1024
@@ -226,250 +168,10 @@ class actor:
         print("Avg difference between preint/preint ignore random: ", mean_difference_3)
         quit()
 
-    def get_preference_loss_v2(self,
-                               supervision_threshold_1, supervision_threshold_2,
-                               estimated_cost_1, estimated_cost_2,
-                               true_cost_1, true_cost_2,
-                               noisy_true_cost_1, noisy_true_cost_2,
-                               is_preint_1, is_equal,
-                               segment_1_upper_cap_error, segment_2_upper_cap_error, coef=30):
-
-        is_equal = np.squeeze(is_equal)
-        # error_offset_1 = np.squeeze(segment_1_upper_cap_error)
-        # error_offset_2 = np.squeeze(segment_2_upper_cap_error)
-
-        # noisy_estimated_cost_1 = tf.stop_gradient(noisy_estimated_cost_1)
-
-        estimated_cost_1 = tf.clip_by_value((estimated_cost_1) * coef, 0, 50)
-        estimated_cost_2 = tf.clip_by_value((estimated_cost_2) * coef, 0, 50)
-
-        prob_2_gt_1 = tf.exp(estimated_cost_2) / (tf.exp(estimated_cost_1) + tf.exp(estimated_cost_2))
-        clipped_prob_2_gt_1 = tf.clip_by_value(prob_2_gt_1, 0, 0.95) / 0.95
-
-        preference_loss = -(1 - is_equal) * (tf.math.log(clipped_prob_2_gt_1 + 1e-8))
-        equal_preference_loss = 0
-        estimated_cost_l2 = (1 - is_equal) * (estimated_cost_2 ** 2)
-
-        # for i in range(true_cost_1.shape[0]):
-        #     if noisy_true_cost_1[i] >= noisy_true_cost_2[i] and not is_equal[i]:
-        #         print(i, noisy_true_cost_1[i], noisy_true_cost_2[i], noisy_estimated_cost_1[i], noisy_estimated_cost_2[i])
-
-        return preference_loss, equal_preference_loss, estimated_cost_l2
-
-    def get_preference_loss_v3(self,
-                               supervision_threshold_1, supervision_threshold_2,
-                               noisy_estimated_cost_1, noisy_estimated_cost_2,
-                               true_cost_1, true_cost_2,
-                               noisy_true_cost_1, noisy_true_cost_2,
-                               is_preint_1, is_equal,
-                               segment_1_upper_cap_error, segment_2_upper_cap_error, coef=30):
-
-        is_equal = np.squeeze(is_equal)
-        # error_offset_1 = np.squeeze(segment_1_upper_cap_error)
-        # error_offset_2 = np.squeeze(segment_2_upper_cap_error)
-
-        # noisy_estimated_cost_1 = tf.stop_gradient(noisy_estimated_cost_1)
-
-        offset_estimated_cost_1_up = tf.clip_by_value((noisy_estimated_cost_1) * coef, 0, 50)
-        offset_estimated_cost_2_down = tf.clip_by_value((noisy_estimated_cost_2) * coef, 0, 50)
-
-        prob_2_gt_1 = tf.exp(offset_estimated_cost_2_down) / (
-                tf.exp(offset_estimated_cost_1_up) + tf.exp(offset_estimated_cost_2_down))
-        clipped_prob_2_gt_1 = tf.clip_by_value(prob_2_gt_1, 0, 0.5) / 0.5
-
-        prob_2_gt_1_eq = tf.exp(offset_estimated_cost_2_down + 1) / (
-                tf.exp(offset_estimated_cost_1_up) + tf.exp(offset_estimated_cost_2_down + 1))
-        prob_1_gt_2_eq = tf.exp(offset_estimated_cost_1_up + 1) / (
-                tf.exp(offset_estimated_cost_1_up + 1) + tf.exp(offset_estimated_cost_2_down))
-
-        clipped_prob_2_gt_1_eq = tf.clip_by_value(prob_2_gt_1_eq, 0, 0.5) / 0.5
-        clipped_prob_1_gt_2_eq = tf.clip_by_value(prob_1_gt_2_eq, 0, 0.5) / 0.5
-
-        preference_loss = -(1 - is_equal) * (tf.math.log(clipped_prob_2_gt_1 + 1e-8))
-        equal_preference_loss = -(is_equal) * (
-                tf.math.log(clipped_prob_2_gt_1_eq + 1e-8) + tf.math.log(clipped_prob_1_gt_2_eq + 1e-8))
-        estimated_cost_l2 = (1 - is_equal) * (noisy_estimated_cost_2 ** 2)
-
-        # for i in range(true_cost_1.shape[0]):
-        #     if noisy_true_cost_1[i] >= noisy_true_cost_2[i] and not is_equal[i]:
-        #         print(i, noisy_true_cost_1[i], noisy_true_cost_2[i], noisy_estimated_cost_1[i], noisy_estimated_cost_2[i])
-        return preference_loss, equal_preference_loss, estimated_cost_l2
-
-    def evaluate_preference_loss(self, cost_buffer, error_function):
-        segment_batch_size = 256
-        # segment_batch_size = 4000
-        # s_t_raw_preintervention, a_t_raw_preintervention, r_t_raw_preintervention, terminal_t_raw_preintervention, expert_only_s_t_raw_preintervention, \
-        # s_t_1_raw_preintervention, mean_label_t_raw_preintervention, raw_label_t_list_raw_preintervention, \
-        # expert_a_t_raw_preintervention, preintervention_raw_segment_intervention_level = cost_buffer.sample(
-        #     segment_batch_size, mode=9)
-
-        s_t_raw_preintervention, a_t_raw_preintervention, r_t_raw_preintervention, terminal_t_raw_preintervention, expert_only_s_t_raw_preintervention, \
-        s_t_1_raw_preintervention, mean_label_t_raw_preintervention, raw_label_t_list_raw_preintervention, \
-        expert_a_t_raw_preintervention, preintervention_raw_segment_intervention_level, _ = cost_buffer.sample_combined(
-            [3, 3], [224, 32])
-        is_preint_1 = np.concatenate([np.zeros((224,)), np.ones((32,))], axis=0)
-
-        # (np.mean(raw_label_t_list_raw_preintervention, axis=1) == 1).astype(np.float32)
-        supervision_thresholds_1 = np.max(preintervention_raw_segment_intervention_level, axis=1)
-        # a_t_preintervention = np.reshape(a_t_raw_preintervention, [-1, self.action_dim]).astype(np.float32)
-        segment_noise_scale_1 = np.clip(np.random.uniform(0, 0.2, size=(segment_batch_size, 1, 1)), 0, 1)
-        segment_noise_scale_1 = np.repeat(segment_noise_scale_1, a_t_raw_preintervention.shape[1], axis=1)
-        segment_noise_scale_1 = np.repeat(segment_noise_scale_1, a_t_raw_preintervention.shape[2], axis=2)
-        action_noise_1 = tf.clip_by_value(tf.random.normal(segment_noise_scale_1.shape) * segment_noise_scale_1,
-                                          -segment_noise_scale_1 * 2.5, segment_noise_scale_1 * 2.5)
-        raw_noisy_a_t_preintervention_1 = tf.clip_by_value(a_t_raw_preintervention + action_noise_1, -1, 1)
-        noisy_a_t_preintervention_1 = np.reshape(raw_noisy_a_t_preintervention_1, [-1, self.action_dim]).astype(
-            np.float32)
-
-        s_t_raw_preintervention_2, a_t_raw_preintervention_2, r_t_raw_preintervention_2, terminal_t_raw_preintervention_2, expert_only_s_t_raw_preintervention_2, \
-        s_t_1_raw_preintervention_2, mean_label_t_raw_preintervention_2, raw_label_t_list_raw_preintervention_2, \
-        expert_a_t_raw_preintervention_2, preintervention_raw_segment_intervention_level_2, _, _ = cost_buffer.sample_preint(
-            segment_batch_size, supervision_thresholds_1, is_preint_1, np.zeros_like(is_preint_1),
-            preint_include_eq=True, all_legal=True)
-
-        segment_noise_scale_2 = np.clip(np.random.uniform(0, 0.2, size=(segment_batch_size, 1, 1)), 0, 1)
-        segment_noise_scale_2 = np.repeat(segment_noise_scale_2, a_t_raw_preintervention_2.shape[1], axis=1)
-        segment_noise_scale_2 = np.repeat(segment_noise_scale_2, a_t_raw_preintervention_2.shape[2], axis=2)
-        action_noise_2 = tf.clip_by_value(tf.random.normal(segment_noise_scale_2.shape) * segment_noise_scale_2,
-                                          -segment_noise_scale_2 * 2.5, segment_noise_scale_2 * 2.5)
-        raw_noisy_a_t_preintervention_2 = tf.clip_by_value(a_t_raw_preintervention_2 + action_noise_2, -1, 1)
-        noisy_a_t_preintervention_2 = np.reshape(raw_noisy_a_t_preintervention_2, [-1, self.action_dim]).astype(
-            np.float32)
-
-        s_t_raw_preintervention_3, a_t_raw_preintervention_3, r_t_raw_preintervention_3, terminal_t_raw_preintervention_3, expert_only_s_t_raw_preintervention_3, \
-        s_t_1_raw_preintervention_3, mean_label_t_raw_preintervention_3, raw_label_t_list_raw_preintervention_3, \
-        expert_a_t_raw_preintervention_3, preintervention_raw_segment_intervention_level_3, _ = cost_buffer.sample_combined(
-            [3, 3], [224, 32])
-
-        segment_noise_scale_3 = np.clip(np.random.normal(0, 0.2, size=(segment_batch_size, 1, 1)), 0, 1)
-        segment_noise_scale_3 = np.repeat(segment_noise_scale_3, a_t_raw_preintervention_3.shape[1], axis=1)
-        segment_noise_scale_3 = np.repeat(segment_noise_scale_3, a_t_raw_preintervention_3.shape[2], axis=2)
-        action_noise_3 = tf.clip_by_value(tf.random.normal(segment_noise_scale_3.shape) * segment_noise_scale_3,
-                                          -segment_noise_scale_3 * 2.5, segment_noise_scale_3 * 2.5)
-        raw_noisy_a_t_preintervention_3 = tf.clip_by_value(a_t_raw_preintervention_3 + action_noise_3, -1, 1)
-        noisy_a_t_preintervention_3 = np.reshape(raw_noisy_a_t_preintervention_3, [-1, self.action_dim]).astype(
-            np.float32)
-
-        is_preint_2 = np.zeros(
-            (256,))  # (np.mean(raw_label_t_list_raw_preintervention_2, axis=1) == 1).astype(np.float32)
-
-        supervision_thresholds_2 = np.max(preintervention_raw_segment_intervention_level_2, axis=1)
-        supervision_thresholds_3 = np.max(preintervention_raw_segment_intervention_level_3, axis=1)
-
-        is_equal_preint = (is_preint_1 * is_preint_2) * (
-                supervision_thresholds_2 == supervision_thresholds_1).astype(np.float32)
-
-        # a_t_preintervention = np.reshape(a_t_raw_preintervention, [-1, self.action_dim]).astype(np.float32)
-        # a_t_preintervention_2 = np.reshape(a_t_raw_preintervention_2, [-1, self.action_dim]).astype(np.float32)
-
-        s_t_raw = np.concatenate([s_t_raw_preintervention,
-                                  s_t_raw_preintervention_2,
-                                  s_t_raw_preintervention_3], axis=0)
-        s_t = np.reshape(s_t_raw, [-1, self.state_dim[0]])
-
-        a_t_noisy = np.concatenate([noisy_a_t_preintervention_1,
-                                    noisy_a_t_preintervention_2,
-                                    noisy_a_t_preintervention_3], axis=0)
-
-        noisy_cost_s_t, cost_distribution, max_ent_loss = self.current_cost_model([s_t, a_t_noisy])
-
-        noisy_estimated_cost_reshaped = tf.reshape(noisy_cost_s_t, [s_t_raw.shape[0], self.args.segment_length])
-        noisy_estimated_cost_segment = tf.reduce_sum(noisy_estimated_cost_reshaped,
-                                                     axis=1)  # prevent instability issues ...
-        noisy_estimated_intervention_probability = noisy_estimated_cost_segment / self.args.segment_length
-        noisy_estimated_cost_1, noisy_estimated_cost_2, noisy_estimated_cost_3 = tf.split(
-            noisy_estimated_intervention_probability, 3, axis=0)
-
-        # pre_true_cost_no_noise_1 = np.clip(
-        #     np.mean(np.abs(expert_a_t_raw_preintervention - raw_noisy_a_t_preintervention_1), axis=2), 0, 1)
-        # pre_true_cost_no_noise_2 = np.clip(
-        #     np.mean(np.abs(expert_a_t_raw_preintervention_2 - raw_noisy_a_t_preintervention_2), axis=2), 0, 1)
-        #
-        # true_cost_no_noise_1 = np.mean(pre_true_cost_no_noise_1, axis=1)
-        # true_cost_no_noise_2 = np.mean(pre_true_cost_no_noise_2, axis=1)
-        #
-        # pre_true_cost_no_noise_3 = np.clip(
-        #     np.mean(np.abs(expert_a_t_raw_preintervention_3 - raw_noisy_a_t_preintervention_3), axis=2), 0, 1)
-        # true_cost_no_noise_3 = np.mean(pre_true_cost_no_noise_3, axis=1)
-
-        true_cost_no_noise_1, _ = error_function(expert_a_t_raw_preintervention, raw_noisy_a_t_preintervention_1)
-        true_cost_no_noise_2, _ = error_function(expert_a_t_raw_preintervention_2, raw_noisy_a_t_preintervention_2)
-        true_cost_no_noise_3, _ = error_function(expert_a_t_raw_preintervention_3, raw_noisy_a_t_preintervention_3)
-
-        true_sample_noisy_inbetween_vs_noisy_preint = np.mean(true_cost_no_noise_2 >= true_cost_no_noise_1)
-        true_sample_noisy_inbetween_vs_no_noise_inbetween = np.mean(true_cost_no_noise_1 >= true_cost_no_noise_3)
-
-        print("Noisy vs Noisy preference ratio: ", np.mean(true_sample_noisy_inbetween_vs_noisy_preint))
-        print("Noisy vs No Noise preference ratio: ", np.mean(true_sample_noisy_inbetween_vs_no_noise_inbetween))
-
-        coef = 30
-        preference_capped_loss, _, _ = self.get_preference_loss_true_v2(supervision_thresholds_1,
-                                                                        supervision_thresholds_2,
-                                                                        noisy_estimated_cost_1,
-                                                                        noisy_estimated_cost_2,
-                                                                        true_cost_no_noise_1, true_cost_no_noise_2,
-                                                                        None, None,
-                                                                        is_preint_1, is_equal_preint, coef=coef,
-                                                                        sanity_check=False)
-
-        preference_loss, _, _ = self.get_preference_loss_true_v3(supervision_thresholds_1,
-                                                                 supervision_thresholds_2,
-                                                                 noisy_estimated_cost_1,
-                                                                 noisy_estimated_cost_2,
-                                                                 true_cost_no_noise_1, true_cost_no_noise_2, None, None,
-                                                                 is_preint_1, is_equal_preint,
-                                                                 0, 0, coef=coef, sanity_check=False)
-
-        preference_noisy_vs_not_noisy_capped_loss, _, _ = self.get_preference_loss_true_v2(supervision_thresholds_1,
-                                                                                           supervision_thresholds_3,
-                                                                                           noisy_estimated_cost_3,
-                                                                                           noisy_estimated_cost_1,
-                                                                                           true_cost_no_noise_3,
-                                                                                           true_cost_no_noise_1, None,
-                                                                                           None,
-                                                                                           is_preint_1, is_equal_preint,
-                                                                                           coef=coef,
-                                                                                           sanity_check=False)
-
-        preference_noisy_vs_not_noisy_loss, _, _ = self.get_preference_loss_true_v3(supervision_thresholds_1,
-                                                                                    supervision_thresholds_3,
-                                                                                    noisy_estimated_cost_3,
-                                                                                    noisy_estimated_cost_1,
-                                                                                    true_cost_no_noise_3,
-                                                                                    true_cost_no_noise_1, None, None,
-                                                                                    is_preint_1, is_equal_preint,
-                                                                                    0, 0, coef=coef, sanity_check=False)
-
-        return np.mean(preference_capped_loss), np.mean(preference_loss), np.mean(
-            preference_noisy_vs_not_noisy_capped_loss), np.mean(preference_noisy_vs_not_noisy_loss)
 
     def train_step_EIL_without_expert(self, cost_buffer, error_function, activate_loss=False, expert_policy=None,
                                       verbose=False, validation_buffer=None, group_size=4):
         with tf.GradientTape() as tape:
-            # s_t, a_t, _, _, intervention_status_t, _, label_t, _, _ = cost_buffer.simple_sample(self.args.batch_size,
-            #                                                                                     mode=1)
-            #
-            # a_t = a_t.astype(np.float32)
-            # double_a_t = tf.concat([a_t, a_t], axis=0)
-            # double_s_t = tf.concat([s_t, s_t], axis=0)
-            #
-            # uniform_noise_scale = np.clip(np.random.uniform(-0.1, 1.2, size=(a_t.shape[0], 1)), 0, 2)
-            # action_low_noise = tf.clip_by_value(tf.random.normal(a_t.shape) * uniform_noise_scale,
-            #                                     -uniform_noise_scale * 2.5, uniform_noise_scale * 2.5)
-            # action_high_noise = tf.clip_by_value(tf.random.normal(a_t.shape) * uniform_noise_scale,
-            #                                      -uniform_noise_scale * 2.5, uniform_noise_scale * 2.5)
-            # action_noise = tf.concat([action_low_noise, action_high_noise], axis=0)
-            #
-            # noisy_a_t = tf.clip_by_value(double_a_t + action_noise, -1, 1)
-            # cost_label, _ = error_function(noisy_a_t, double_a_t)
-            # cost_label = np.expand_dims(cost_label, axis=1)
-            #
-            # noisy_cost_s_t, _, _ = self.current_cost_model([double_s_t, noisy_a_t])
-            # buffer_expert_loss_raw = (noisy_cost_s_t - cost_label) ** 2
-            # # noisy_cost_l2 = (noisy_cost_s_t - 0.5) ** 2 * 0.003
-            # buffer_expert_loss = tf.reduce_mean(
-            #     buffer_expert_loss_raw)  # + tf.reduce_mean(noisy_cost_l2)  # + tf.reduce_mean(segment_preference_loss_raw) + tf.reduce_mean(intervention_loss_raw)
-
             segment_batch_size = 4
             s_t_raw_preintervention, a_t_raw_preintervention, r_t_raw_preintervention, terminal_t_raw_preintervention, expert_only_s_t_raw_preintervention, \
             s_t_1_raw_preintervention, mean_label_t_raw_preintervention, raw_label_t_list_raw_preintervention, \
@@ -647,15 +349,6 @@ class actor:
             random_actions_4 = np.reshape(random_actions_raw_4, [-1, self.action_dim]).astype(np.float32)
             offset_error_4, offset_single_error_4 = error_function(a_t_raw_preintervention_2, random_actions_raw_4)
 
-            #
-            # noise_state_3 = np.clip(np.random.normal(loc=0, scale=0.1, size=s_t_raw_preintervention.shape), -0.25, 0.25)
-            # random_state_raw_3 = np.clip(noise_state_3 + s_t_raw_preintervention, -1, 1)
-            # random_states_3 = np.reshape(random_state_raw_3, [-1, s_t_raw_preintervention.shape[1], s_t_raw_preintervention.shape[2]]).astype(np.float32)
-            #
-            # noise_state_4 = np.clip(np.random.normal(loc=0, scale=0.1, size=s_t_raw_preintervention_2.shape), -0.25, 0.25)
-            # random_state_raw_4 = np.clip(noise_state_4 + s_t_raw_preintervention_2, -1, 1)
-            # random_states_4 = np.reshape(random_state_raw_4, [-1,  s_t_raw_preintervention_2.shape[1], s_t_raw_preintervention_2.shape[2]]).astype(np.float32)
-
             s_t_raw = np.concatenate([s_t_raw_preintervention, s_t_raw_preintervention_2, s_t_raw_preintervention,
                                       s_t_raw_preintervention_2], axis=0)
             s_t = np.reshape(s_t_raw, [-1, self.state_dim[0]])
@@ -743,32 +436,6 @@ class actor:
                                                                                 is_random=None, coef=coef,
                                                                                 sanity_check=False)
 
-            #
-            # preference_loss_5, l2_error_5, _ = self.get_preference_loss_true_v6(None, None, noisy_estimated_cost_4,
-            #                                                                     np.ones_like(noisy_estimated_cost_4),
-            #                                                                     true_cost_no_noise_4 * coef,
-            #                                                                     np.ones_like(true_cost_no_noise_4) * coef,
-            #                                                                     single_cost_1, single_cost_2,
-            #                                                                     np.zeros_like(is_preint_1),
-            #                                                                     None, offset_error_1,
-            #                                                                     offset_error_2,
-            #                                                                     is_random=None, coef=coef,
-            #                                                                     sanity_check=False)
-
-            # preference_loss_4, l2_error_4, _ = self.get_preference_loss_true_v6(None, None, np.zeros_like(noisy_estimated_cost_4),
-            #                                                                     noisy_estimated_cost_4,
-            #                                                                     np.zeros_like(
-            #                                                                         true_cost_no_noise_2) * coef,
-            #                                                                     true_cost_no_noise_2 * coef,
-            #                                                                     None, None,
-            #                                                                     np.zeros_like(is_preint_1),
-            #                                                                     None, offset_error_1,
-            #                                                                     offset_error_2,
-            #                                                                     is_random=None, coef=coef,
-            #                                                                     sanity_check=False)
-
-            # new_offset_single_error_3 = np.maximum(1 - offset_single_error_3, np.zeros_like(offset_single_error_3))
-            # new_offset_single_error_4 = np.maximum(1 - offset_single_error_4, np.zeros_like(offset_single_error_4))
 
             new_offset_single_error_3 = 1 - np.clip(
                 np.mean(np.abs(a_t_raw_preintervention - random_actions_raw_3), axis=2), 0, 0.25) / 0.25
@@ -786,17 +453,6 @@ class actor:
             # quit()
             simple_l2_loss = tf.reduce_mean(simple_l2_loss) * 0.0001
             preference_loss = preference_loss_1 + preference_loss_3 + preference_loss_2 + preference_loss_4  # + preference_loss_5
-            # special_l2 = (1 - offset_single_error_3) * (tf.stop_gradient(single_cost_1) - single_cost_3) ** 2 + \
-            # special_l2 = (1 - offset_single_error_3) * (tf.stop_gradient(single_cost_1) - single_cost_3) ** 2 + \
-            #              (1 - offset_single_error_4) * (tf.stop_gradient(single_cost_2) - single_cost_4) ** 2
-
-            # special_l2 =((noisy_estimated_cost_2) - noisy_estimated_cost_4) ** 2 +\
-            #             ((noisy_estimated_cost_1) - noisy_estimated_cost_3) ** 2
-
-            # special_l2 = (noisy_estimated_cost_3 - 0.5) ** 2  + (noisy_estimated_cost_4 - 0.5) ** 2
-            # special_l2 = noisy_estimated_cost_1 ** 2 + noisy_estimated_cost_2 ** 2
-            # classification_loss = (tf.reduce_mean(preference_loss) * 0.001 + tf.reduce_mean(
-            #     special_l2) * 0.005) * self.args.preference_loss_weight  # + tf.reduce_mean(l2_loss_2) * 0.005  # + tf.reduce_mean(l2_loss_2) * 0.003
             classification_loss = tf.reduce_mean(
                 preference_loss) * 0.01  # + tf.reduce_mean(l2_error) * 0.05  # + tf.reduce_mean(l2_loss_2) * 0.003
             classification_loss = classification_loss * self.args.cost_loss_modifier + simple_l2_loss
@@ -1124,251 +780,6 @@ class actor:
             self.current_cost_optimizer.apply_gradients(zip(grads, self.current_cost_model.trainable_weights))
         return cost_loss, np.mean(preference_loss)
 
-        # with tf.GradientTape() as tape:
-        #     s_t, a_t, _, _, intervention_status_t, _, label_t, _, _ = cost_buffer.simple_sample(self.args.batch_size, mode=1)
-        #
-        #     a_t = a_t.astype(np.float32)
-        #     double_a_t = tf.concat([a_t, a_t], axis=0)
-        #     double_s_t = tf.concat([s_t, s_t], axis=0)
-        #
-        #     uniform_noise_scale = np.clip(np.random.uniform(-0.1, 1.2, size=(a_t.shape[0], 1)), 0, 2)
-        #     action_low_noise = tf.clip_by_value(tf.random.normal(a_t.shape) * uniform_noise_scale,
-        #                                         -uniform_noise_scale * 2.5, uniform_noise_scale * 2.5)
-        #     action_high_noise = tf.clip_by_value(tf.random.normal(a_t.shape) * uniform_noise_scale,
-        #                                          -uniform_noise_scale * 2.5, uniform_noise_scale * 2.5)
-        #     action_noise = tf.concat([action_low_noise, action_high_noise], axis=0)
-        #
-        #     noisy_a_t = tf.clip_by_value(double_a_t + action_noise, -1, 1)
-        #     cost_label, _ = error_function(noisy_a_t, double_a_t)
-        #     cost_label = np.expand_dims(cost_label, axis=1)
-        #
-        #     noisy_cost_s_t, _, _ = self.current_cost_model([double_s_t, noisy_a_t])
-        #     buffer_expert_loss_raw = (noisy_cost_s_t - cost_label) ** 2
-        #     # noisy_cost_l2 = (noisy_cost_s_t - 0.5) ** 2 * 0.003
-        #     buffer_expert_loss = tf.reduce_mean(
-        #         buffer_expert_loss_raw)  # + tf.reduce_mean(noisy_cost_l2)  # + tf.reduce_mean(segment_preference_loss_raw) + tf.reduce_mean(intervention_loss_raw)
-        #
-        #     segment_batch_size = 16
-        #     s_t_raw_preintervention, a_t_raw_preintervention, r_t_raw_preintervention, terminal_t_raw_preintervention, expert_only_s_t_raw_preintervention, \
-        #     s_t_1_raw_preintervention, mean_label_t_raw_preintervention, raw_label_t_list_raw_preintervention, \
-        #     expert_a_t_raw_preintervention, preintervention_raw_segment_intervention_level, segment_weight_1 = cost_buffer.sample_combined([3, 4], [12, 4])
-        #
-        #     a_t_preintervention = np.reshape(a_t_raw_preintervention, [-1, self.action_dim]).astype(np.float32)
-        #     is_preint_1 = np.concatenate([np.zeros((12,)), np.ones((4,))], axis=0)
-        #     # is_preint_1 = np.concatenate([ np.zeros((32,))], axis=0)
-        #
-        #     is_expert_1 = np.concatenate([np.zeros((segment_batch_size,))], axis=0)
-        #     #expert_only_1 = np.reshape(expert_only_s_t_raw_preintervention, [-1, self.args.segment_length]).astype(np.float32)
-        #     supervision_thresholds_1 = np.max(preintervention_raw_segment_intervention_level, axis=1)
-        #
-        #     s_t_raw_preintervention_2, a_t_raw_preintervention_2, r_t_raw_preintervention_2, terminal_t_raw_preintervention_2, expert_only_s_t_raw_preintervention_2, \
-        #     s_t_1_raw_preintervention_2, mean_label_t_raw_preintervention_2, raw_label_t_list_raw_preintervention_2, \
-        #     expert_a_t_raw_preintervention_2, preintervention_raw_segment_intervention_level_2, segment_weight_2, is_random_2 = cost_buffer.sample_preint(
-        #         segment_batch_size, supervision_thresholds_1, is_preint_1, is_expert_1, preint_include_eq=False, all_legal=True)
-        #
-        #
-        #     supervision_thresholds_2 = np.max(preintervention_raw_segment_intervention_level_2, axis=1)
-        #     #expert_only_2 = np.reshape(expert_only_s_t_raw_preintervention_2, [-1, self.args.segment_length]).astype(np.float32)
-        #
-        #
-        #     a_t_preintervention_2 = np.reshape(a_t_raw_preintervention_2, [-1, self.action_dim]).astype(np.float32)
-        #
-        #
-        #     noise = np.random.uniform(0.0, 0.0, size=a_t_raw_preintervention.shape)
-        #     random_actions_raw_1 = np.clip(noise + a_t_raw_preintervention, -1, 1)
-        #     random_actions_1 = np.reshape(random_actions_raw_1, [-1, self.action_dim]).astype(np.float32)
-        #     offset_error_1, _ = error_function(a_t_raw_preintervention, random_actions_raw_1)
-        #
-        #     noise_2 = np.random.uniform(0.0, 0.0, size=a_t_raw_preintervention_2.shape)
-        #     random_actions_raw_2 = np.clip(noise_2 + a_t_raw_preintervention_2, -1, 1)
-        #     random_actions_2 = np.reshape(random_actions_raw_2, [-1, self.action_dim]).astype(np.float32)
-        #     offset_error_2, _ = error_function(a_t_raw_preintervention_2, random_actions_raw_2)
-        #
-        #     s_t_raw = np.concatenate([s_t_raw_preintervention, s_t_raw_preintervention_2], axis=0)
-        #     s_t = np.reshape(s_t_raw, [-1, self.state_dim[0]])
-        #     a_t_noisy = np.concatenate([random_actions_1, random_actions_2], axis=0)
-        #
-        #     expert_intervention_t_raw = np.concatenate([expert_only_s_t_raw_preintervention, expert_only_s_t_raw_preintervention_2], axis=0)
-        #     expert_intervention_t = np.reshape(expert_intervention_t_raw, [-1, 1])
-        #
-        #     noisy_cost_s_t, cost_distribution, max_ent_loss = self.current_cost_model([s_t, a_t_noisy])
-        #
-        #
-        #
-        #     noisy_cost_s_t_expert_no_grad = noisy_cost_s_t * (1 - expert_intervention_t)  # + tf.stop_gradient(noisy_cost_s_t) * expert_intervention_t
-        #     # is_random_2_expanded = np.repeat(np.expand_dims(np.concatenate([is_random_2, is_random_2], axis=0), axis=1), self.args.segment_length, axis=1)
-        #     # is_random_2_expanded = np.reshape(is_random_2_expanded, [-1, 1])
-        #     # noisy_cost_s_t_expert_no_grad = (1 - is_random_2_expanded) * noisy_cost_s_t_expert_no_grad + is_random_2_expanded * tf.stop_gradient(noisy_cost_s_t_expert_no_grad)
-        #
-        #     noisy_cost_s_t_expert_no_grad_reshaped = tf.reshape(noisy_cost_s_t_expert_no_grad, [s_t_raw.shape[0], self.args.segment_length])
-        #     single_cost_1, single_cost_2 = tf.split(noisy_cost_s_t_expert_no_grad_reshaped, 2, axis=0)
-        #     noisy_estimated_cost_reshaped = tf.reshape(noisy_cost_s_t_expert_no_grad,[s_t_raw.shape[0], self.args.segment_length])
-        #     noisy_estimated_cost_segment = tf.reduce_sum(noisy_estimated_cost_reshaped, axis=1)  # prevent instability issues ...
-        #     noisy_estimated_intervention_probability = noisy_estimated_cost_segment / self.args.segment_length
-        #     noisy_estimated_cost_1, noisy_estimated_cost_2 = tf.split(noisy_estimated_intervention_probability, 2, axis=0)
-        #
-        #
-        #     coef = self.args.coefficient
-        #     true_cost_no_noise_1, true_per_state_error_1 = error_function(expert_a_t_raw_preintervention,
-        #                                                                   random_actions_raw_1)
-        #     true_cost_no_noise_2, true_per_state_error_2 = error_function(expert_a_t_raw_preintervention_2,
-        #                                                                   random_actions_raw_2)
-        #     preference_loss_1, _, _ = self.get_preference_loss_true_v6(None, None, noisy_estimated_cost_1,
-        #                                                                            noisy_estimated_cost_2,
-        #                                                                            true_cost_no_noise_1 * coef,
-        #                                                                            true_cost_no_noise_2 * coef,
-        #                                                                            single_cost_1, single_cost_2,
-        #                                                                            np.zeros_like(is_preint_1),
-        #                                                                            None, offset_error_1,
-        #                                                                            offset_error_2,
-        #                                                                            is_random=None, coef=coef)
-        #
-        #
-        #     preference_loss = preference_loss_1
-        #     special_l2 = noisy_estimated_cost_2 ** 2
-        #
-        #     classification_loss = tf.reduce_mean(preference_loss) * 0.01 + tf.reduce_mean(special_l2) * 0.01 # + tf.reduce_mean(special_l2) * 0.1# + tf.reduce_mean(l2_loss_2) * 0.005  # + tf.reduce_mean(l2_loss_2) * 0.003
-        #     classification_loss = classification_loss * self.args.cost_loss_modifier
-        #
-        #     if verbose:
-        #         # element = 4
-        #         # for i in range(30):
-        #         #     print(i, estimated_cost_reshaped[element][i].numpy(), pre_true_cost_no_noise_1[element][i])
-        #         # print(true_cost_no_noise_1[element], estimated_cost_1[element].numpy() * 30)
-        #         cost_gt_0_5 = np.mean(noisy_estimated_cost_reshaped > 0.5, axis=1)
-        #
-        #         error_single_state_1_l2 = tf.reduce_mean(tf.abs(single_cost_1 - true_per_state_error_1) ** 2)
-        #         error_single_state_2_l2 = tf.reduce_mean(tf.abs(single_cost_2 - true_per_state_error_2) ** 2)
-        #
-        #         error_single_state_1_l1 = tf.reduce_mean(tf.abs(single_cost_1 - true_per_state_error_1))
-        #         error_single_state_2_l1 = tf.reduce_mean(tf.abs(single_cost_2 - true_per_state_error_2))
-        #
-        #         print(error_single_state_1_l1.shape)
-        #
-        #         print("\n")
-        #         print(np.mean(preference_loss), np.mean(classification_loss))
-        #         print("State Err L1, L2:", np.mean(error_single_state_1_l1), np.mean(error_single_state_2_l1),
-        #               np.mean(error_single_state_1_l2), np.mean(error_single_state_2_l2), )
-        #         # print("Error Mode 10:", true_total_error_mode_10, true_per_step_error_mode_10)
-        #         # print("Error Mode 3:", true_total_error_mode_3, true_per_step_error_mode_3)
-        #         print("Current noise", np.mean(noisy_estimated_cost_1) * self.args.segment_length,
-        #               np.mean(noisy_estimated_cost_2) * self.args.segment_length)
-        #         print("True no noise", np.mean(true_cost_no_noise_1) * self.args.segment_length,
-        #               np.mean(true_cost_no_noise_2) * self.args.segment_length)
-        #         print("Segment Cost Diversity: ", np.mean(np.std(noisy_estimated_cost_reshaped, axis=1)))
-        #         for i in range(8):
-        #             idx = np.random.randint(0, segment_batch_size)
-        #             print(idx, noisy_estimated_cost_1[idx].numpy(), noisy_estimated_cost_2[idx].numpy(),
-        #                   ", gt 0.5:", cost_gt_0_5[idx], cost_gt_0_5[idx + segment_batch_size],
-        #                   ", True: ", true_cost_no_noise_1[idx], true_cost_no_noise_2[idx],
-        #                   preference_loss[idx].numpy(), supervision_thresholds_1[idx], supervision_thresholds_2[idx])
-        #         print("-----------------------------")
-        #
-        #     l2_loss = 0
-        #     layers = 0
-        #     for v in self.current_cost_model.trainable_weights:
-        #         if 'bias' not in v.name and "cost_network" in v.name:
-        #             l2_loss += tf.reduce_mean(tf.nn.l2_loss(v)) * self.args.l2
-        #             layers += 1
-        #     l2_loss = l2_loss / layers
-        #     cost_loss = classification_loss + buffer_expert_loss + l2_loss
-        #
-        #     grads = tape.gradient(cost_loss, self.current_cost_model.trainable_weights)
-        #     self.current_cost_optimizer.apply_gradients(zip(grads, self.current_cost_model.trainable_weights))
-        # return cost_loss, np.mean(preference_loss)
-
-    def training_test(self, cost_buffer, error_function, mode=3):
-
-        # accuracy: Is the action taken better than the buffer action
-        accuracy = 0
-        accuracy_total = 0
-        bc_a_t_cost_list = []
-
-        for _ in range(32):
-            s_t, a_t, _, _, intervention_status_t, _, label_t, expert_a_t, _ = cost_buffer.simple_sample(256, mode=mode)
-            bc_a_t = self.current_model_list[0](s_t)
-            a_t_cost, _ = error_function(a_t, expert_a_t)
-            bc_a_t_cost, _ = error_function(bc_a_t, expert_a_t)
-
-            a_t_cost = np.clip(a_t_cost - self.args.cost_cap, 0, 1) / (1 - self.args.cost_cap)
-            bc_a_t_cost = np.clip(bc_a_t_cost - self.args.cost_cap, 0, 1) / (1 - self.args.cost_cap)
-
-            for i in range(256):
-                accuracy_total += 1
-                if bc_a_t_cost[i] <= a_t_cost[i]:
-                    accuracy += 1
-                bc_a_t_cost_list.append(bc_a_t_cost[i])
-
-        accuracy = accuracy / accuracy_total
-        return accuracy, bc_a_t_cost_list
-
-    def special_evaluation_state(self, cost_buffer, error_function, mode=3):
-        accuracy_type_1 = 0
-        accuracy_type_1_total = 0
-        accuracy_type_2 = 0
-        accuracy_type_2_total = 0
-
-        true_gt_noisy = 0
-        estimated_gt_noisy = 0
-
-        for l in range(32):
-            s_t, a_t, _, _, intervention_status_t, _, label_t, expert_a_t, _ = cost_buffer.simple_sample(64, mode=mode)
-
-            standard_noisy_cost, _, _ = self.current_cost_model([s_t, a_t])
-            standard_noisy_cost = np.squeeze(standard_noisy_cost)
-
-            standard_true_cost, _ = error_function(a_t, expert_a_t)
-
-            true_error_level = []
-            estimated_error_difference_raw = []
-            estimated_error_difference = []
-
-            for j in range(50):
-                noise = np.random.normal(0, 0.4, size=a_t.shape)
-                noisy_action = np.clip(a_t + noise, -1, 1)
-
-                noisy_true_cost, _ = error_function(noisy_action, expert_a_t)
-                noisy_cost_t, cost_distribution, max_ent_loss = self.current_cost_model([s_t, noisy_action])
-                noisy_cost_t = np.squeeze(noisy_cost_t)
-
-                raw_estimated_error_diff = np.squeeze(standard_noisy_cost - noisy_cost_t)
-                estimated_error_diff = np.squeeze(np.abs(raw_estimated_error_diff))
-
-                for k in range(64):
-                    true_error_level.append(noisy_true_cost[k])
-                    estimated_error_difference_raw.append(raw_estimated_error_diff[k])
-                    estimated_error_difference.append(estimated_error_diff[k])
-
-                    # if noisy action is better than the current action
-                    if standard_true_cost[k] > noisy_true_cost[k] + 0.01:
-                        if standard_noisy_cost[k] > noisy_cost_t[k] + 0.01:
-                            accuracy_type_1 += 1
-                        accuracy_type_1_total += 1
-                    if standard_true_cost[k] < noisy_true_cost[k] - 0.01:
-                        if standard_noisy_cost[k] < noisy_cost_t[k] - 0.01:
-                            accuracy_type_2 += 1
-                        accuracy_type_2_total += 1
-
-                    if noisy_cost_t[k] > standard_noisy_cost[k]:
-                        estimated_gt_noisy += 1
-
-                    if noisy_true_cost[k] > standard_true_cost[k]:
-                        true_gt_noisy += 1
-
-        print("Mode: ", mode, "Greater than Accuracy: ", accuracy_type_1 / accuracy_type_1_total, accuracy_type_1_total,
-              ", Total Acc: ", (accuracy_type_1 + accuracy_type_2) / (accuracy_type_1_total + accuracy_type_2_total))
-        print("Mode: ", mode, "Less than Accuracy: ", accuracy_type_2 / accuracy_type_2_total, accuracy_type_2_total)
-        print("Mode: ", mode, "Proportion True standard greater than noisy: ", true_gt_noisy / (64 * 50 * 32))
-        print("Mode: ", mode, "Proportion Estimated greater than noisy", estimated_gt_noisy / (64 * 50 * 32))
-
-        # import matplotlib.pyplot as plt
-        # plt.scatter(true_error_level, estimated_error_difference_raw)
-        # plt.scatter(true_error_level, estimated_error_difference)
-        #
-        # #plt.scatter(true_error_level, estimated_error_difference)
-        # plt.savefig("test.png")
-        # quit()train_step_cost_true_v2
-
     def train_step_cost_true_v2(self, cost_buffer, error_function, activate_loss=False, expert_policy=None,
                                 verbose=False, validation_buffer=None, preference_error=1, group_size=4):
 
@@ -1405,10 +816,8 @@ class actor:
                 [3], [segment_batch_size])
 
             a_t_preintervention = np.reshape(a_t_raw_preintervention, [-1, self.action_dim]).astype(np.float32)
-            # is_preint_1 = np.concatenate([np.zeros((segment_batch_size - 2,)), np.ones((2,))], axis=0)
             is_preint_1 = np.concatenate([np.zeros((segment_batch_size,))], axis=0)
             is_expert_1 = np.concatenate([np.zeros((segment_batch_size,))], axis=0)
-            # expert_only_1 = np.reshape(expert_only_s_t_raw_preintervention, [-1, self.args.segment_length]).astype(np.float32)
             supervision_thresholds_1 = np.max(preintervention_raw_segment_intervention_level, axis=1)
 
             s_t_raw_preintervention_2, a_t_raw_preintervention_2, r_t_raw_preintervention_2, terminal_t_raw_preintervention_2, expert_only_s_t_raw_preintervention_2, \
@@ -1418,8 +827,6 @@ class actor:
                 all_legal=False)
 
             supervision_thresholds_2 = np.max(preintervention_raw_segment_intervention_level_2, axis=1)
-            # expert_only_2 = np.reshape(expert_only_s_t_raw_preintervention_2, [-1, self.args.segment_length]).astype(np.float32)
-
             a_t_preintervention_2 = np.reshape(a_t_raw_preintervention_2, [-1, self.action_dim]).astype(np.float32)
 
             noise = np.random.uniform(0.0, 0.0, size=a_t_raw_preintervention.shape)
@@ -1442,15 +849,6 @@ class actor:
             random_actions_4 = np.reshape(random_actions_raw_4, [-1, self.action_dim]).astype(np.float32)
             offset_error_4, offset_single_error_4 = error_function(a_t_raw_preintervention_2, random_actions_raw_4)
 
-            #
-            # noise_state_3 = np.clip(np.random.normal(loc=0, scale=0.1, size=s_t_raw_preintervention.shape), -0.25, 0.25)
-            # random_state_raw_3 = np.clip(noise_state_3 + s_t_raw_preintervention, -1, 1)
-            # random_states_3 = np.reshape(random_state_raw_3, [-1, s_t_raw_preintervention.shape[1], s_t_raw_preintervention.shape[2]]).astype(np.float32)
-            #
-            # noise_state_4 = np.clip(np.random.normal(loc=0, scale=0.1, size=s_t_raw_preintervention_2.shape), -0.25, 0.25)
-            # random_state_raw_4 = np.clip(noise_state_4 + s_t_raw_preintervention_2, -1, 1)
-            # random_states_4 = np.reshape(random_state_raw_4, [-1,  s_t_raw_preintervention_2.shape[1], s_t_raw_preintervention_2.shape[2]]).astype(np.float32)
-
             s_t_raw = np.concatenate([s_t_raw_preintervention, s_t_raw_preintervention_2, s_t_raw_preintervention,
                                       s_t_raw_preintervention_2], axis=0)
             s_t = np.reshape(s_t_raw, [-1, self.state_dim[0]])
@@ -1463,10 +861,6 @@ class actor:
             noisy_cost_s_t, cost_distribution, max_ent_loss = self.current_cost_model([s_t, a_t_noisy])
 
             noisy_cost_s_t_expert_no_grad = noisy_cost_s_t  # + tf.stop_gradient(noisy_cost_s_t) * expert_intervention_t
-            # is_random_2_expanded = np.repeat(np.expand_dims(np.concatenate([is_random_2, is_random_2], axis=0), axis=1), self.args.segment_length, axis=1)
-            # is_random_2_expanded = np.reshape(is_random_2_expanded, [-1, 1])
-            # noisy_cost_s_t_expert_no_grad = (1 - is_random_2_expanded) * noisy_cost_s_t_expert_no_grad + is_random_2_expanded * tf.stop_gradient(noisy_cost_s_t_expert_no_grad)
-
             noisy_cost_s_t_expert_no_grad_reshaped = tf.reshape(noisy_cost_s_t_expert_no_grad,
                                                                 [s_t_raw.shape[0], self.args.segment_length])
             single_cost_1, single_cost_2, single_cost_3, single_cost_4 = tf.split(
@@ -1487,8 +881,6 @@ class actor:
                                                                           random_actions_raw_2)
             true_cost_no_noise_3, true_per_state_error_3 = error_function(expert_a_t_raw_preintervention,
                                                                           random_actions_raw_3)
-            true_cost_no_noise_4, true_per_state_error_4 = error_function(expert_a_t_raw_preintervention_2,
-                                                                          random_actions_raw_4)
 
             preference_loss_1, l2_error, _ = self.get_preference_loss_true_v6(None, None, noisy_estimated_cost_1,
                                                                               noisy_estimated_cost_2,
@@ -1538,33 +930,6 @@ class actor:
                                                                                 is_random=None, coef=coef,
                                                                                 sanity_check=False)
 
-            #
-            # preference_loss_5, l2_error_5, _ = self.get_preference_loss_true_v6(None, None, noisy_estimated_cost_4,
-            #                                                                     np.ones_like(noisy_estimated_cost_4),
-            #                                                                     true_cost_no_noise_4 * coef,
-            #                                                                     np.ones_like(true_cost_no_noise_4) * coef,
-            #                                                                     single_cost_1, single_cost_2,
-            #                                                                     np.zeros_like(is_preint_1),
-            #                                                                     None, offset_error_1,
-            #                                                                     offset_error_2,
-            #                                                                     is_random=None, coef=coef,
-            #                                                                     sanity_check=False)
-
-            # preference_loss_4, l2_error_4, _ = self.get_preference_loss_true_v6(None, None, np.zeros_like(noisy_estimated_cost_4),
-            #                                                                     noisy_estimated_cost_4,
-            #                                                                     np.zeros_like(
-            #                                                                         true_cost_no_noise_2) * coef,
-            #                                                                     true_cost_no_noise_2 * coef,
-            #                                                                     None, None,
-            #                                                                     np.zeros_like(is_preint_1),
-            #                                                                     None, offset_error_1,
-            #                                                                     offset_error_2,
-            #                                                                     is_random=None, coef=coef,
-            #                                                                     sanity_check=False)
-
-            # new_offset_single_error_3 = np.maximum(1 - offset_single_error_3, np.zeros_like(offset_single_error_3))
-            # new_offset_single_error_4 = np.maximum(1 - offset_single_error_4, np.zeros_like(offset_single_error_4))
-
             new_offset_single_error_3 = 1 - np.clip(
                 np.mean(np.abs(a_t_raw_preintervention - random_actions_raw_3), axis=2), 0, 0.25) / 0.25
             new_offset_single_error_3 = new_offset_single_error_3.astype(np.float32) ** 2
@@ -1581,28 +946,11 @@ class actor:
             # quit()
             simple_l2_loss = tf.reduce_mean(simple_l2_loss) * 0.0003
             preference_loss = preference_loss_1 + preference_loss_3 + preference_loss_2 + preference_loss_4  # + preference_loss_5
-            # special_l2 = (1 - offset_single_error_3) * (tf.stop_gradient(single_cost_1) - single_cost_3) ** 2 + \
-            # special_l2 = (1 - offset_single_error_3) * (tf.stop_gradient(single_cost_1) - single_cost_3) ** 2 + \
-            #              (1 - offset_single_error_4) * (tf.stop_gradient(single_cost_2) - single_cost_4) ** 2
-
-            # special_l2 =((noisy_estimated_cost_2) - noisy_estimated_cost_4) ** 2 +\
-            #             ((noisy_estimated_cost_1) - noisy_estimated_cost_3) ** 2
-
-            # special_l2 = (noisy_estimated_cost_3 - 0.5) ** 2  + (noisy_estimated_cost_4 - 0.5) ** 2
-            # special_l2 = noisy_estimated_cost_1 ** 2 + noisy_estimated_cost_2 ** 2
-            # classification_loss = (tf.reduce_mean(preference_loss) * 0.001 + tf.reduce_mean(
-            #     special_l2) * 0.005) * self.args.preference_loss_weight  # + tf.reduce_mean(l2_loss_2) * 0.005  # + tf.reduce_mean(l2_loss_2) * 0.003
             classification_loss = tf.reduce_mean(
                 preference_loss) * 0.01  # + tf.reduce_mean(l2_error) * 0.05  # + tf.reduce_mean(l2_loss_2) * 0.003
             classification_loss = classification_loss * self.args.cost_loss_modifier + simple_l2_loss
 
-            # classification_loss = tf.reduce_mean(special_l2)
-
             if verbose:
-                # element = 4
-                # for i in range(30):
-                #     print(i, estimated_cost_reshaped[element][i].numpy(), pre_true_cost_no_noise_1[element][i])
-                # print(true_cost_no_noise_1[element], estimated_cost_1[element].numpy() * 30)
                 cost_gt_0_5 = np.mean(noisy_estimated_cost_reshaped > 0.5, axis=1)
 
                 error_single_state_1_l2 = tf.reduce_mean(tf.abs(single_cost_1 - true_per_state_error_1) ** 2)
@@ -1616,8 +964,6 @@ class actor:
                 print(np.mean(preference_loss), np.mean(simple_l2_loss), np.mean(classification_loss))
                 print("State Err L1, L2:", np.mean(error_single_state_1_l1), np.mean(error_single_state_2_l1),
                       np.mean(error_single_state_1_l2), np.mean(error_single_state_2_l2), )
-                # print("Error Mode 10:", true_total_error_mode_10, true_per_step_error_mode_10)
-                # print("Error Mode 3:", true_total_error_mode_3, true_per_step_error_mode_3)
                 print("Current noise", np.mean(noisy_estimated_cost_1) * self.args.segment_length,
                       np.mean(noisy_estimated_cost_2) * self.args.segment_length)
                 print("True no noise", np.mean(true_cost_no_noise_1) * self.args.segment_length,
@@ -1680,9 +1026,7 @@ class actor:
             noisy_cost_s_t, _, _ = self.current_cost_model([double_s_t, noisy_a_t])
             buffer_expert_loss_raw = (noisy_cost_s_t - cost_label) ** 2
             # noisy_cost_l2 = (noisy_cost_s_t - 0.5) ** 2 * 0.003
-            buffer_expert_loss = tf.reduce_mean(
-                buffer_expert_loss_raw)  # + tf.reduce_mean(noisy_cost_l2)  # + tf.reduce_mean(segment_preference_loss_raw) + tf.reduce_mean(intervention_loss_raw)
-
+            buffer_expert_loss = tf.reduce_mean(buffer_expert_loss_raw)
             segment_batch_size = 16
             s_t_raw_preintervention, a_t_raw_preintervention, r_t_raw_preintervention, terminal_t_raw_preintervention, expert_only_s_t_raw_preintervention, \
             s_t_1_raw_preintervention, mean_label_t_raw_preintervention, raw_label_t_list_raw_preintervention, \
@@ -1690,11 +1034,9 @@ class actor:
                 [3], [segment_batch_size])
 
             a_t_preintervention = np.reshape(a_t_raw_preintervention, [-1, self.action_dim]).astype(np.float32)
-            # is_preint_1 = np.concatenate([np.zeros((12,)), np.ones((4,))], axis=0)
             is_preint_1 = np.concatenate([np.zeros((segment_batch_size,))], axis=0)
 
             is_expert_1 = np.concatenate([np.zeros((segment_batch_size,))], axis=0)
-            # expert_only_1 = np.reshape(expert_only_s_t_raw_preintervention, [-1, self.args.segment_length]).astype(np.float32)
             supervision_thresholds_1 = np.max(preintervention_raw_segment_intervention_level, axis=1)
 
             s_t_raw_preintervention_2, a_t_raw_preintervention_2, r_t_raw_preintervention_2, terminal_t_raw_preintervention_2, expert_only_s_t_raw_preintervention_2, \
@@ -1704,8 +1046,6 @@ class actor:
                 all_legal=True)
 
             supervision_thresholds_2 = np.max(preintervention_raw_segment_intervention_level_2, axis=1)
-            # expert_only_2 = np.reshape(expert_only_s_t_raw_preintervention_2, [-1, self.args.segment_length]).astype(np.float32)
-
             a_t_preintervention_2 = np.reshape(a_t_raw_preintervention_2, [-1, self.action_dim]).astype(np.float32)
 
             noise = np.random.uniform(0.0, 0.0, size=a_t_raw_preintervention.shape)
@@ -1717,16 +1057,6 @@ class actor:
             random_actions_raw_2 = np.clip(noise_2 + a_t_raw_preintervention_2, -1, 1)
             random_actions_2 = np.reshape(random_actions_raw_2, [-1, self.action_dim]).astype(np.float32)
             offset_error_2, _ = error_function(a_t_raw_preintervention_2, random_actions_raw_2)
-            #
-            # noise_3 = np.random.normal(loc=0, scale=0.2, size=a_t_raw_preintervention.shape)
-            # random_actions_raw_3 = np.clip(noise_3 + a_t_raw_preintervention, -1, 1)
-            # random_actions_3 = np.reshape(random_actions_raw_3, [-1, self.action_dim]).astype(np.float32)
-            # offset_error_3, offset_single_error_3 = error_function(a_t_raw_preintervention, random_actions_raw_3)
-            #
-            # noise_4 = np.random.normal(loc=0, scale=0.2, size=a_t_raw_preintervention_2.shape)
-            # random_actions_raw_4 = np.clip(noise_4 + a_t_raw_preintervention_2, -1, 1)
-            # random_actions_4 = np.reshape(random_actions_raw_4, [-1, self.action_dim]).astype(np.float32)
-            # offset_error_4, offset_single_error_4 = error_function(a_t_raw_preintervention_2, random_actions_raw_4)
 
             s_t_raw = np.concatenate([s_t_raw_preintervention, s_t_raw_preintervention_2], axis=0)
             s_t = np.reshape(s_t_raw, [-1, self.state_dim[0]])
@@ -1739,10 +1069,6 @@ class actor:
             noisy_cost_s_t, cost_distribution, max_ent_loss = self.current_cost_model([s_t, a_t_noisy])
 
             noisy_cost_s_t_expert_no_grad = noisy_cost_s_t  # + tf.stop_gradient(noisy_cost_s_t) * expert_intervention_t
-            # is_random_2_expanded = np.repeat(np.expand_dims(np.concatenate([is_random_2, is_random_2], axis=0), axis=1), self.args.segment_length, axis=1)
-            # is_random_2_expanded = np.reshape(is_random_2_expanded, [-1, 1])
-            # noisy_cost_s_t_expert_no_grad = (1 - is_random_2_expanded) * noisy_cost_s_t_expert_no_grad + is_random_2_expanded * tf.stop_gradient(noisy_cost_s_t_expert_no_grad)
-
             noisy_cost_s_t_expert_no_grad_reshaped = tf.reshape(noisy_cost_s_t_expert_no_grad,
                                                                 [s_t_raw.shape[0], self.args.segment_length])
             single_cost_1, single_cost_2 = tf.split(
@@ -1761,9 +1087,6 @@ class actor:
                                                                           random_actions_raw_1)
             true_cost_no_noise_2, true_per_state_error_2 = error_function(expert_a_t_raw_preintervention_2,
                                                                           random_actions_raw_2)
-            #
-            # print(single_cost_2.shape, true_cost_no_noise_1.shape, true_per_state_error_1.shape)
-            # quit()
 
             preference_loss_1, _, _ = self.get_preference_loss_true_v6(None, None, noisy_estimated_cost_1,
                                                                        noisy_estimated_cost_2,
@@ -1776,25 +1099,12 @@ class actor:
                                                                        is_random=None, coef=coef)
 
             preference_loss = preference_loss_1
-            # special_l2 = (1 - offset_single_error_3) * (tf.stop_gradient(single_cost_1) - single_cost_3) ** 2 + \
-            #              (1 - offset_single_error_4) * (tf.stop_gradient(single_cost_2) - single_cost_4) ** 2
-
-            # special_l2 =((noisy_estimated_cost_2) - noisy_estimated_cost_4) ** 2 +\
-            #             ((noisy_estimated_cost_1) - noisy_estimated_cost_3) ** 2
-
-            # special_l2 = (noisy_estimated_cost_3 - 0.5) ** 2  + (noisy_estimated_cost_4 - 0.5) ** 2
             special_l2 = noisy_estimated_cost_2 ** 2
             classification_loss = (tf.reduce_mean(preference_loss) * 0.01 + tf.reduce_mean(
-                special_l2) * 0.005)  # + tf.reduce_mean(l2_loss_2) * 0.005  # + tf.reduce_mean(l2_loss_2) * 0.003
+                special_l2) * 0.005)
             classification_loss = classification_loss
 
-            # classification_loss = tf.reduce_mean(special_l2)
-
             if verbose:
-                # element = 4
-                # for i in range(30):
-                #     print(i, estimated_cost_reshaped[element][i].numpy(), pre_true_cost_no_noise_1[element][i])
-                # print(true_cost_no_noise_1[element], estimated_cost_1[element].numpy() * 30)
                 cost_gt_0_5 = np.mean(noisy_estimated_cost_reshaped > 0.5, axis=1)
 
                 error_single_state_1_l2 = tf.reduce_mean(tf.abs(single_cost_1 - true_per_state_error_1) ** 2)
@@ -1810,8 +1120,6 @@ class actor:
                 print(np.mean(preference_loss), np.mean(special_l2), np.mean(classification_loss))
                 print("State Err L1, L2:", np.mean(error_single_state_1_l1), np.mean(error_single_state_2_l1),
                       np.mean(error_single_state_1_l2), np.mean(error_single_state_2_l2), )
-                # print("Error Mode 10:", true_total_error_mode_10, true_per_step_error_mode_10)
-                # print("Error Mode 3:", true_total_error_mode_3, true_per_step_error_mode_3)
                 print("Current noise", np.mean(noisy_estimated_cost_1) * self.args.segment_length,
                       np.mean(noisy_estimated_cost_2) * self.args.segment_length)
                 print("True no noise", np.mean(true_cost_no_noise_1) * self.args.segment_length,
@@ -1910,15 +1218,6 @@ class actor:
             random_actions_4 = np.reshape(random_actions_raw_4, [-1, self.action_dim]).astype(np.float32)
             offset_error_4, offset_single_error_4 = error_function(a_t_raw_preintervention_2, random_actions_raw_4)
 
-            #
-            # noise_state_3 = np.clip(np.random.normal(loc=0, scale=0.1, size=s_t_raw_preintervention.shape), -0.25, 0.25)
-            # random_state_raw_3 = np.clip(noise_state_3 + s_t_raw_preintervention, -1, 1)
-            # random_states_3 = np.reshape(random_state_raw_3, [-1, s_t_raw_preintervention.shape[1], s_t_raw_preintervention.shape[2]]).astype(np.float32)
-            #
-            # noise_state_4 = np.clip(np.random.normal(loc=0, scale=0.1, size=s_t_raw_preintervention_2.shape), -0.25, 0.25)
-            # random_state_raw_4 = np.clip(noise_state_4 + s_t_raw_preintervention_2, -1, 1)
-            # random_states_4 = np.reshape(random_state_raw_4, [-1,  s_t_raw_preintervention_2.shape[1], s_t_raw_preintervention_2.shape[2]]).astype(np.float32)
-
             s_t_raw = np.concatenate([s_t_raw_preintervention, s_t_raw_preintervention_2, s_t_raw_preintervention,
                                       s_t_raw_preintervention_2], axis=0)
             s_t = np.reshape(s_t_raw, [-1, self.state_dim[0]])
@@ -1931,10 +1230,6 @@ class actor:
             noisy_cost_s_t, cost_distribution, max_ent_loss = self.current_cost_model([s_t, a_t_noisy])
 
             noisy_cost_s_t_expert_no_grad = noisy_cost_s_t  # + tf.stop_gradient(noisy_cost_s_t) * expert_intervention_t
-            # is_random_2_expanded = np.repeat(np.expand_dims(np.concatenate([is_random_2, is_random_2], axis=0), axis=1), self.args.segment_length, axis=1)
-            # is_random_2_expanded = np.reshape(is_random_2_expanded, [-1, 1])
-            # noisy_cost_s_t_expert_no_grad = (1 - is_random_2_expanded) * noisy_cost_s_t_expert_no_grad + is_random_2_expanded * tf.stop_gradient(noisy_cost_s_t_expert_no_grad)
-
             noisy_cost_s_t_expert_no_grad_reshaped = tf.reshape(noisy_cost_s_t_expert_no_grad,
                                                                 [s_t_raw.shape[0], self.args.segment_length])
             single_cost_1, single_cost_2, single_cost_3, single_cost_4 = tf.split(
@@ -2006,58 +1301,8 @@ class actor:
                                                                                 is_random=None, coef=coef,
                                                                                 sanity_check=False)
 
-            #
-            # preference_loss_5, l2_error_5, _ = self.get_preference_loss_true_v6(None, None, noisy_estimated_cost_4,
-            #                                                                     np.ones_like(noisy_estimated_cost_4),
-            #                                                                     true_cost_no_noise_4 * coef,
-            #                                                                     np.ones_like(true_cost_no_noise_4) * coef,
-            #                                                                     single_cost_1, single_cost_2,
-            #                                                                     np.zeros_like(is_preint_1),
-            #                                                                     None, offset_error_1,
-            #                                                                     offset_error_2,
-            #                                                                     is_random=None, coef=coef,
-            #                                                                     sanity_check=False)
 
-            # preference_loss_4, l2_error_4, _ = self.get_preference_loss_true_v6(None, None, np.zeros_like(noisy_estimated_cost_4),
-            #                                                                     noisy_estimated_cost_4,
-            #                                                                     np.zeros_like(
-            #                                                                         true_cost_no_noise_2) * coef,
-            #                                                                     true_cost_no_noise_2 * coef,
-            #                                                                     None, None,
-            #                                                                     np.zeros_like(is_preint_1),
-            #                                                                     None, offset_error_1,
-            #                                                                     offset_error_2,
-            #                                                                     is_random=None, coef=coef,
-            #                                                                     sanity_check=False)
-
-            # new_offset_single_error_3 = np.maximum(1 - offset_single_error_3, np.zeros_like(offset_single_error_3))
-            # new_offset_single_error_4 = np.maximum(1 - offset_single_error_4, np.zeros_like(offset_single_error_4))
-
-            # new_offset_single_error_3 = 1 - np.clip(np.mean(np.abs(a_t_raw_preintervention - random_actions_raw_3), axis=2), 0, 0.5)/0.5
-            # new_offset_single_error_3 = new_offset_single_error_3.astype(np.float32) ** 2
-            # new_offset_single_error_4 = 1 - np.clip(np.mean(np.abs(a_t_raw_preintervention_2 - random_actions_raw_4), axis=2), 0, 0.5)/0.5
-            # new_offset_single_error_4 = new_offset_single_error_4.astype(np.float32) ** 2
-            # # print(new_offset_single_error_3.shape, new_offset_single_error_4.shape)
-            # # quit()
-            #
-            # simple_l2_loss = (new_offset_single_error_3 * (single_cost_1 - single_cost_3) ** 2
-            #                   + new_offset_single_error_4 * (single_cost_2 - single_cost_4) ** 2)
-            # # print(simple_l2_loss.shape)
-            # # print(offset_single_error_3[0, 0], new_offset_single_error_3[0, 0])
-            # # quit()
-            # simple_l2_loss = tf.reduce_mean(simple_l2_loss) * 0.0001
             preference_loss = preference_loss_1 + preference_loss_3 + preference_loss_2 + preference_loss_4  # + preference_loss_5
-            # special_l2 = (1 - offset_single_error_3) * (tf.stop_gradient(single_cost_1) - single_cost_3) ** 2 + \
-            # special_l2 = (1 - offset_single_error_3) * (tf.stop_gradient(single_cost_1) - single_cost_3) ** 2 + \
-            #              (1 - offset_single_error_4) * (tf.stop_gradient(single_cost_2) - single_cost_4) ** 2
-
-            # special_l2 =((noisy_estimated_cost_2) - noisy_estimated_cost_4) ** 2 +\
-            #             ((noisy_estimated_cost_1) - noisy_estimated_cost_3) ** 2
-
-            # special_l2 = (noisy_estimated_cost_3 - 0.5) ** 2  + (noisy_estimated_cost_4 - 0.5) ** 2
-            # special_l2 = noisy_estimated_cost_1 ** 2 + noisy_estimated_cost_2 ** 2
-            # classification_loss = (tf.reduce_mean(preference_loss) * 0.001 + tf.reduce_mean(
-            #     special_l2) * 0.005) * self.args.preference_loss_weight  # + tf.reduce_mean(l2_loss_2) * 0.005  # + tf.reduce_mean(l2_loss_2) * 0.003
             classification_loss = tf.reduce_mean(
                 preference_loss) * 0.01  # + tf.reduce_mean(l2_error) * 0.05  # + tf.reduce_mean(l2_loss_2) * 0.003
             classification_loss = classification_loss * self.args.cost_loss_modifier

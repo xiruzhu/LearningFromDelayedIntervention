@@ -2,11 +2,7 @@ import numpy as np
 import gym
 import tensorflow as tf
 import utils, td3, network_models
-from tqdm import tqdm
-import matplotlib.pyplot as plt
 import pickle
-from sklearn import metrics
-
 
 global_error_scale_var = 0.3
 def error_function(a, b):
@@ -24,7 +20,6 @@ def error_function(a, b):
         error = np.mean(np.mean(np.clip(np.mean((a - b) ** 2, axis=3), 0, global_error_scale_var)/global_error_scale_var, axis=2), axis=1)
         raw_error = np.clip(np.mean((a - b) ** 2, axis=2), 0, global_error_scale_var)/global_error_scale_var
         output = error, raw_error
-    #return np.clip(raw_error, 0, 0.5)/0.5, raw_error
     return output
 
 def buffer_action_eval(args, actor, buffer, tflogger, frame_number, name="validation", iterations=200, batch_size=128):
@@ -44,7 +39,6 @@ def buffer_action_eval(args, actor, buffer, tflogger, frame_number, name="valida
     total_error_raw_l2_list = []
 
     for _ in range(iterations):
-        #s_t_no_label, a_t_no_label, _, _, _, _, label_t, expert_a_t, _ = cost_buffer.simple_sample(batch_size, mode=0)
         s_t, a_t, _, _, intervention_status_t, _, label_t, expert_a_t, _ = buffer.simple_sample(args.batch_size, mode=0)
         current_action = actor.current_model_list[0](s_t)
         expert_error, raw_expert_error = error_function(current_action, expert_a_t) #np.mean(np.abs(current_action - expert_a_t), axis=1)
@@ -121,7 +115,6 @@ def sampling_evaluation(args, env, initial_policy, actor, expert, noisy_actions=
         current_state = next_frame
         if terminal:
             break
-    #print(eps_len, eps_rew, intervention_freq, intervention_steps, intervention_threshold)
     return intervention_raw_l1_error_list, intervention_raw_l2_error_list
 
 
@@ -132,10 +125,6 @@ def evaluate(args, env, actor, expert, cost_distribution, threshold_list, noisy_
     action_std_list = []
     cost_list = []
     current_state = env.reset()
-    # for i in range(5):
-    #     next_frame, reward, terminal, info = env.step(np.clip(np.random.uniform(-1.2, 1.2), -1, 1))
-    #     current_state = next_frame
-
     expert_diff_list = []
     expert_diff_raw_l2_list = []
     expert_diff_raw_list = []
@@ -164,7 +153,6 @@ def evaluate(args, env, actor, expert, cost_distribution, threshold_list, noisy_
     cost_sum = 0
     for i in range(args.max_eps_len):
         action, action_std = actor.get_current_action(np.array([current_state]), verbose=True, noisy=False)
-        #expert, _, _ = expert.get_current_action(np.array([current_state]), verbose=False, noisy=False)
 
         action_expert = expert.get_current_action(np.array([current_state]), verbose=True, noisy=False)
         expert_difference, raw_expert_difference = error_function(action_expert, action) #np.mean(np.abs(current_action - expert_a_t), axis=1)
@@ -204,25 +192,9 @@ def evaluate(args, env, actor, expert, cost_distribution, threshold_list, noisy_
         eval_len += 1
         eval_rew += reward
         reward_list.append(reward)
-        # if i > 30:
-        #     if np.mean(reward_list[-30:]) < -2:
-        #         # print("Was here ... ", np.mean(reward_list[-preintervention_interval:]))
-        #         # for j in range(eps_len):
-        #         #     print(j, reward_list[j])
-        #         terminal = True
         terminal_list.append(terminal)
         if terminal:
             break
-
-    # cost_list = np.squeeze(cost_list)
-    # moving_average_cost = []
-    # for i in range(cost_list.shape[0]):
-    #     average_cost = 0
-    #     for j in range(10):
-    #         if i - j >= 0:
-    #             average_cost += cost_list[i - j]
-    #     moving_average_cost.append(average_cost/10)
-    # moving_average_cost = np.squeeze(moving_average_cost)
 
     future_reward_list = []
     for i in range(eval_len):
@@ -284,9 +256,6 @@ def special_evaluation(args, actor, cost_buffer, tflogger, name, frame_num, mode
         trained_action_error_up_dict.append(0)
         trained_action_error_down_dict.append(0)
 
-        # bin_dict.append(0)
-        # bin_dict_direction.append(0)
-        # bin_num.append(0)
         noise_range_up = -(i + 1) * 0.05
         noise_range_down = (i + 1) * 0.05
 
@@ -297,9 +266,6 @@ def special_evaluation(args, actor, cost_buffer, tflogger, name, frame_num, mode
     noise_range_down_list = np.array(noise_range_down_list)
 
     batch_size = 240
-
-    #batch_size = 256
-    # 25,
     noise_range_up_list = np.repeat(np.expand_dims(noise_range_up_list, axis=1), actor.action_dim, axis=1)
     noise_range_up_list = np.repeat(np.expand_dims(noise_range_up_list, axis=0), batch_size, axis=0)
 
@@ -333,12 +299,6 @@ def special_evaluation(args, actor, cost_buffer, tflogger, name, frame_num, mode
         a_t_no_label_orig = np.copy(a_t_no_label)
         expert_a_t_orig = np.copy(expert_a_t)
 
-        #
-        # pre_true_cost_no_noise_2 = np.clip(np.mean((expert_a_t_orig - a_t_no_label_orig) ** 2, axis=1), 0, 0.5) / 0.5
-        # estimated_current_cost = np.squeeze(estimated_current_cost)
-        # true_per_step_error_mode_3 = np.mean(np.abs(pre_true_cost_no_noise_2 - estimated_current_cost))
-        # print(np.mean(true_per_step_error_mode_3))
-
         s_t_no_label = np.repeat(np.expand_dims(s_t_no_label, axis=1), bin_count, axis=1)
         s_t_no_label = np.reshape(s_t_no_label, [-1, actor.state_dim[0]])
 
@@ -348,19 +308,13 @@ def special_evaluation(args, actor, cost_buffer, tflogger, name, frame_num, mode
         sampled_noise = np.random.uniform(noise_range_up_list, noise_range_down_list)
         noisy_expert_a_t = np.clip(expert_a_t + sampled_noise, -1, 1)
 
-        #true_cost = np.clip(np.mean(np.abs(noisy_expert_a_t - expert_a_t), axis=1), 0, 0.75)/0.75
-
         true_cost, _ = error_function(noisy_expert_a_t, expert_a_t) #np.mean(np.abs(current_action - expert_a_t), axis=1)
-
 
         estimated_noisy_cost, _, _ = actor.current_cost_model([s_t_no_label, noisy_expert_a_t])
         estimated_noisy_cost = np.squeeze(estimated_noisy_cost)
 
-
-
         estimated_current_cost, _, _ = actor.current_cost_model([s_t_no_label_orig, a_t_no_label_orig])
         estimated_current_cost = np.squeeze(estimated_current_cost)
-        #true_current_cost = np.clip(np.mean(np.abs(expert_a_t_orig - a_t_no_label_orig), axis=1), 0, 0.75)/0.75
         true_current_cost, _ = error_function(expert_a_t_orig, a_t_no_label_orig) #np.mean(np.abs(current_action - expert_a_t), axis=1)
 
 
@@ -385,10 +339,7 @@ def special_evaluation(args, actor, cost_buffer, tflogger, name, frame_num, mode
                 relative_error_no_noise += 1
 
 
-        #quit()
         for j in range(batch_size):
-            # estimated_cost_of_state = estimated_current_cost[j]
-            # estimated_bin_index = int(np.clip(true_current_cost[j] * bin_count, 0, bin_count - 1))
             estimated_bin_index = int(np.clip(estimated_current_cost[j] * bin_count, 0, bin_count - 1))
 
             if intervention_t[j] == 1:
@@ -436,11 +387,6 @@ def special_evaluation(args, actor, cost_buffer, tflogger, name, frame_num, mode
                     else:
                         preint_up_error_list.append(error)
 
-    # print("-----------------------")
-    # for i in range(bin_count * 2):
-    #     print(i, class_difference_bin[i]/(max(1, class_difference_count[i])),
-    #           class_bin_error_direction[i] / max(1, class_difference_count[i]),
-    #           class_difference_count[i]/np.sum(class_difference_count))
     if len(expert_error_list) == 0:
         expert_error_list.append(0)
         expert_up_error_list.append(0)
@@ -607,12 +553,6 @@ def sample_episode(args, env, cost_buffer, actor, expert, count, intervention_th
         eps_rew += reward
 
         reward_list.append(reward)
-        # if step > 30:
-        #     if np.mean(reward_list[-30:]) < -2:
-        #         # print("Was here ... ", np.mean(reward_list[-preintervention_interval:]))
-        #         # for j in range(eps_len):
-        #         #     print(j, reward_list[j])
-        #         terminal = True
         expert_action_list.append(expert_action)
         state_list.append(current_state)
         action_list.append(noisy_executed_action)
@@ -620,7 +560,6 @@ def sample_episode(args, env, cost_buffer, actor, expert, count, intervention_th
         next_state_list.append(next_frame)
 
 
-        # print(step, expert_steps > 0, np.mean(expert_intervention[-supervision_window:]))
         if expert_steps > 0:
             expert_steps -= 1
             expert_steps_rewards += reward
@@ -738,32 +677,21 @@ def main():
     if args.env_id == "Humanoid-v2":
         env_name = "humanoid"
         intervention_thresholds_list = [12, 16, 20, 24]
-        target_sampled_expert_steps = 800
-        target_sampled_no_intervention_steps = 10000
-
     elif args.env_id == "Walker2d-v2":
         env_name = "walker"
         intervention_thresholds_list = [12, 16, 20, 24]
-        target_sampled_expert_steps = 800
-        target_sampled_no_intervention_steps = 10000
 
     elif args.env_id == "HalfCheetah-v2":
         env_name = "halfcheetah"
         intervention_thresholds_list = [12, 16, 20, 24]
-        target_sampled_expert_steps = 800
-        target_sampled_no_intervention_steps = 10000
 
     elif args.env_id == "Hopper-v2":
         env_name = "hopper"
         intervention_thresholds_list = [12, 14, 16, 18]
-        target_sampled_expert_steps = 800
-        target_sampled_no_intervention_steps = 10000
         eval_policy_noise = 0.1
     elif args.env_id == "Ant-v2":
         env_name = "ant"
         intervention_thresholds_list = [12, 16, 20, 24]
-        target_sampled_expert_steps = 800
-        target_sampled_no_intervention_steps = 10000
     else:
         print("Error env")
         quit()
@@ -773,7 +701,6 @@ def main():
 
     expert_policy.current_model.load_weights(expert_policy.args.checkpoint_dir + "/" + env_name + "_expert_policy" + "/actor_current_network_" + str(0))
     old_cost_buffer = pickle.load(open("../data/original_" + env_name + "_no_noise_initial_cost_data_delay_1_v4_0.pkl", "rb"))
-    cost_buffer = old_cost_buffer
     cost_buffer = utils.TrajectorySegmentBuffer_v5(args, size=10000)
     cost_buffer.reinit(old_cost_buffer, error_function)
 
@@ -789,24 +716,13 @@ def main():
     initial_imitation_policy = network_models.actor(args, ob_space.shape, ac_space.shape[-1])
 
     tflogger = utils.tensorflowboard_logger(args.log_dir + args.custom_id, args)
-    eps_number = 0
     frame_number = 0
-    eval_frame = 0
-    save_frame = 0
-    buffer_save_frame = 0
     pretrain_steps = int(100000 * (1 + args.cost_loss_bias))
-
-    expert_intervention_steps_list = []
-    intervention_freq_list = []
-    sampled_length_list = []
-    average_delay_list = []
     total_expert_intervention = 0
-    total_sampled_steps = 0
 
     bc_loss_list = []
     policy_loss_list = []
-    #intervention_thresholds_list = [10, 15, 20]
-    #intervention_thresholds_list = [12, 16, 20]
+
 
     print(cost_buffer.preintervention_segment_count)
     print(cost_buffer.raw_data_count)
@@ -826,12 +742,9 @@ def main():
     print(cost_buffer.raw_data_count)
     print(cost_buffer.expert_single_state_count)
     print(validation_cost_buffer.raw_data_count)
-    print(validation_cost_buffer.expert_single_state_count)    # special_evaluation(args, imitation_policy, validation_cost_buffer, tflogger, "eval_mode_3", 0, 3)
-    # quit()
-    #cost_buffer.verify_preint(error_function)
+    print(validation_cost_buffer.expert_single_state_count)
     cost_buffer.verify_inbetween(error_function)
     cost_buffer.verify_expert(error_function)
-    #quit(())
 
     if args.intervention_loss:
         if args.cost_only == 0:
@@ -891,52 +804,10 @@ def main():
             print("Sampled Random Segment Error: ", preference_noisy_loss, "Sampled Error Random Segment Capped: ",preference_noisy_loss_capped)
             print("Done pretraining cost model...")
 
-    # print("was here ... ")
-    # trajectory_count = 0
-    # total_reward = 0
-    # if args.intervention_loss:
-    #     for _ in range(1):
-    #         sampled_rew, sampled_len, expert_intervention_steps, intervention_freq, ensemble_uncertainty, average_delay = sample_episode(args, env, buffer_list,
-    #                                                                                                 cost_buffer,
-    #                                                                                                 imitation_policy,
-    #                                                                                                 expert_policy, trajectory_count, preintervention_interval=args.segment_length, expert_interventions=False)
-    #         trajectory_count += 1
-    #         total_reward += sampled_rew
-    # print(total_reward/30)
-    # quit()
-    #
 
-    #special_evaluation(args, imitation_policy, validation_cost_buffer, tflogger, "eval_mode_3", 0, 3)
-    #special_evaluation(args, imitation_policy, validation_cost_buffer, tflogger, "eval_mode_10", 0, 10)
-    # quit()
-
-        # self.cost_model.load_weights("../data/walker_delay_1_steps_100000_cost_model")
-    # _ = imitation_policy.train_step_cost(cost_buffer, verbose=True, expert_policy=expert_policy)
-    # quit()
-    # cost_loss = imitation_policy.train_step_cost(cost_buffer, verbose=True, expert_policy=expert_policy)
-    # quit()
-    #evaluate_cost_data(args, env, imitation_policy, expert_policy, i, validation_cost_buffer, tflogger, name="Cost Validation")
-    #quit()
-    # cost_loss = imitation_policy.train_step_cost(cost_buffer, expert_policy=expert_policy, verbose=True)
     #value current cost policy for fun ...
-
     cost_loss_list= []
     for _ in range(args.policy_training_steps):
-        # if frame_number % 10000 == 0 and frame_number > 0:
-        #     policy_error_l1_list = []
-        #     policy_error_l2_list = []
-        #
-        #     for k in range(20):
-        #         l1_error, l2_error = sampling_evaluation(args, env, initial_imitation_policy, imitation_policy, expert_policy)
-        #         policy_error_l1_list.extend(l1_error)
-        #         policy_error_l2_list.extend(l2_error)
-        #
-        #     tflogger.log_scalar("Evaluation_sampling/l1_error", np.mean(policy_error_l1_list), frame_number)
-        #     tflogger.log_scalar("Evaluation_sampling/l2_error", np.mean(policy_error_l2_list), frame_number)
-        #     print("Evaluation Sampling, l1 error: ", np.mean(policy_error_l1_list), "l2 error: ", np.mean(policy_error_l2_list))
-        #     print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-
-
         if frame_number % 10000 == 0 and frame_number > 0:
             print(frame_number, total_expert_intervention)
             eval_rews_list = []
@@ -1019,9 +890,6 @@ def main():
             tflogger.log_scalar("Evaluation_standard/up_ci", up_ci, frame_number)
             tflogger.log_scalar("Evaluation_standard/rew_per_frame", rew_per_frame, frame_number)
             tflogger.log_scalar("Evaluation_standard/terminal_rate", num_terminal / num_sampled_states * 10000, frame_number)
-
-
-
 
 
 
@@ -1113,15 +981,12 @@ def main():
 
         frame_number += 1
 
-        #trans_loss = imitation_policy.train_step_transition_model(transition_buffer)
         policy_loss, bc_loss, cost_loss = imitation_policy.train_step_actor_v2(None, cost_buffer, expert_policy)
         policy_loss_list.append(policy_loss)
         bc_loss_list.append(bc_loss)
 
 
         cost_loss_list.append(cost_loss)
-
-        #tflogger.log_scalar("RAW/Trans_loss", trans_loss, frame_number)
         if frame_number % 1000 == 0:
             tflogger.log_scalar("RAW/Policy_loss", np.mean(policy_loss_list), frame_number)
             tflogger.log_scalar("RAW/BC_loss", np.mean(bc_loss_list), frame_number)
@@ -1130,11 +995,7 @@ def main():
             policy_loss_list = []
             bc_loss_list = []
             cost_loss_list = []
-        # if args.intervention_loss:
-        #     raw_cost_loss = imitation_policy.train_step_cost(cost_buffer)
-        #     #raw_cost_list.append(raw_cost_loss)
-        #     tflogger.log_scalar("RAW/Cost_loss", raw_cost_loss, frame_number)
-        #
+
 
 
 if __name__ == "__main__":
