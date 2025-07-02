@@ -89,8 +89,8 @@ def main():
         if args.cost_only == 0:
             print("Attempting to load data ...")
             imitation_policy.current_cost_model.load_weights("../data/" + env_name + "_cost_model/cost_model_delay_" + str(args.intervention_delay) + "_70_" + str(args.cost_version) + "_1_v" + str(args.buffer_id) + "_mod_" + str(int(args.coefficient)) +  "_bias_" + str(0.0) + "_l2_" + str(args.l2) + "_seed_" + str(args.seed))
-            imitation_policy.special_evaluation_state(cost_buffer, error_function, mode=2)
-            imitation_policy.special_evaluation_state(cost_buffer, error_function, mode=3)
+            evaluation.special_evaluation_state(imitation_policy, cost_buffer, error_function, mode=2)
+            evaluation.special_evaluation_state(imitation_policy, cost_buffer, error_function, mode=3)
             print("Data loaded ... ")
         else:
             additional_loss_list = []
@@ -121,8 +121,8 @@ def main():
                     tflogger.log_scalar("Cost Training/capped_preference_random_loss", preference_noisy_loss_capped, i)
                     print("Sampled Error: ", preference_loss, "Sampled Error Capped: ", preference_loss_capped)
                     print("Sampled Random Segment Error: ", preference_noisy_loss, "Sampled Error Random Segment Capped: ", preference_noisy_loss_capped)
-                    imitation_policy.special_evaluation_state(cost_buffer, error_function, mode=2)
-                    imitation_policy.special_evaluation_state(cost_buffer, error_function, mode=3)
+                    evaluation.special_evaluation_state(imitation_policy, cost_buffer, error_function, mode=2)
+                    evaluation.special_evaluation_state(imitation_policy, cost_buffer, error_function, mode=3)
                     print("---------------------------------")
                     imitation_policy.current_cost_model.save_weights("../data/" + env_name + "_cost_model/cost_model_delay_" + str(args.intervention_delay) + "_70_" + str(args.cost_version) + "_1_v" + str(args.buffer_id) + "_mod_" + str(int(args.coefficient)) +  "_bias_" + str(0.0) + "_l2_" + str(args.l2) + "_seed_" + str(args.seed))
             imitation_policy.current_cost_model.save_weights("../data/" + env_name + "_cost_model/cost_model_delay_" + str(args.intervention_delay) + + "_70_" + str(args.cost_version) + "_1_v" + str(args.buffer_id) + "_mod_" + str(int(args.coefficient)) +  "_bias_" + str(0.0) + "_l2_" + str(args.l2) + "_seed_" + str(args.seed))

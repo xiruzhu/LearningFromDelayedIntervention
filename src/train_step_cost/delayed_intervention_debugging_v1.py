@@ -3,6 +3,11 @@ import tensorflow as tf
 
 def train_step_cost(actor, cost_buffer, error_function, activate_loss=False, expert_policy=None,
                             verbose=False):
+    """
+    Trains one step of the cost function with our delayed intervention system
+    For debugging use, do not use for running in scripts
+    """
+
     with tf.GradientTape() as tape:
         s_t, a_t, _, _, intervention_status_t, _, label_t, _, _ = cost_buffer.simple_sample(
             actor.args.batch_size,

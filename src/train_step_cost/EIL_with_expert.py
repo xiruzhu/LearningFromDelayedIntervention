@@ -3,6 +3,11 @@ import tensorflow as tf
 
 def train_step_cost(actor, cost_buffer, error_function, activate_loss=False, expert_policy=None,
                                verbose=False, validation_buffer=None, group_size=4):
+
+    """
+    Trains one step of the cost function with EIL with expert loss
+    """
+
     with tf.GradientTape() as tape:
         s_t, a_t, _, _, intervention_status_t, _, label_t, _, _ = cost_buffer.simple_sample(actor.args.batch_size,
                                                                                             mode=1)

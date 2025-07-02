@@ -2,6 +2,9 @@ import numpy as np
 import tensorflow as tf
 
 def train_step_cost(actor, cost_buffer, error_function, activate_loss=False, expert_policy=None,  verbose=False):
+    """
+    Trains one step of the cost function with EIL with expert loss
+    """
     with tf.GradientTape() as tape:
         segment_batch_size = 4
         s_t_raw_preintervention, a_t_raw_preintervention, r_t_raw_preintervention, terminal_t_raw_preintervention, expert_only_s_t_raw_preintervention, \

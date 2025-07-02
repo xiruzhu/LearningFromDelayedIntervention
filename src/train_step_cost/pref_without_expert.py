@@ -4,6 +4,10 @@ import tensorflow as tf
 def train_step_cost(actor, cost_buffer, error_function, preference_dataset,
                                            activate_loss=False, expert_policy=None, verbose=False,
                                            validation_buffer=None):
+    """
+    Trains one step of the cost function sampled preferences
+    Assumes preference dataset is provided and does not use noisy expert loss
+    """
     with tf.GradientTape() as tape:
         segment_batch_size = 16
 

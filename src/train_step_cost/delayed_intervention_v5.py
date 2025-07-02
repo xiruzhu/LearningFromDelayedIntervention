@@ -3,6 +3,18 @@ import tensorflow as tf
 
 def train_step_cost(actor, cost_buffer, error_function, activate_loss=False, expert_policy=None,
                             verbose=False, validation_buffer=None, group_size=4):
+    """
+    Trains one step of the cost function with our delayed intervention system
+    Hyperparameters:
+
+    Preference Loss Weight: 0.01
+    Simple L2 Reg: 0.0001
+    Noise = 0.1
+
+    No preint data
+    Includes preference loss where noisy inbetween data should be less than 1
+    """
+
     with tf.GradientTape() as tape:
         s_t, a_t, _, _, intervention_status_t, _, label_t, _, _ = cost_buffer.simple_sample(
             actor.args.batch_size,
