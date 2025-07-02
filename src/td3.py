@@ -22,6 +22,9 @@ class actor:
         self.target_model, self.target_vars, self.target_optimizer = self.build_network(model_name="current")
 
     def build_network(self, model_name="current", epsilon=1e-6):
+        """
+        Constructs the policy network.
+        """
         init = tf.keras.initializers.GlorotNormal()
 
         l2 = tf.keras.layers.Dense(self.args.hidden,kernel_initializer=init,activation=tf.nn.relu, name=model_name + "_actor_network_1")(self.state_input)
@@ -36,6 +39,9 @@ class actor:
         return current_model, current_vars, optimizer
 
     def update_actor_network(self):
+        """
+        Soft updates target network parameters.
+        """
         current_weights = self.current_model.get_weights()
         target_weights = self.target_model.get_weights()
 
@@ -45,15 +51,10 @@ class actor:
             new_target_weights.append(new_weight)
         self.target_model.set_weights(new_target_weights)
 
-    def get_batch_action(self, state):
-        action = self.current_model([state])
-        return action.numpy()
-
     def get_random_action(self):
         return np.random.uniform(-1, 1, size=(self.action_dim))
 
     def get_current_action(self, state, verbose=False, noisy=False):
-        #state = np.expand_dims(state, axis=0)
         action = self.current_model(state)[0]
         if noisy:
             noise = np.clip(np.random.normal(size=action.shape) * self.policy_noise, -self.noise_clip, self.noise_clip)
@@ -63,20 +64,19 @@ class actor:
             return action.numpy()
 
     def train_step_actor(self, buffer, critic):
+        """
+        Performs one actor update and returns (policy_loss, value_loss).
+        """
         s_t, s_t_1, a_t, r_t, terminal_t = buffer.sample()
         with tf.GradientTape() as tape:
-            #actor update step
 
             actions = self.current_model(s_t)
             noise = tf.clip_by_value(tf.random.normal(actions.shape) * self.policy_noise, -self.noise_clip, self.noise_clip)
-            # log_pi = np.expand_dims(log_pi, axis=1)
             noisy_actions = tf.clip_by_value(noise + actions, -1, 1)
             qvf1 = critic.target_qvf_model_1([s_t, noisy_actions])
             qvf2 = critic.target_qvf_model_2([s_t, noisy_actions])
 
             min_target = tf.minimum(qvf1, qvf2)
-            # l2_loss = tf.add_n([tf.nn.l2_loss(v) for v in self.current_vars
-            #                         if 'bias' not in v.name and "current_actor_network" in v.name]) * self.args.l2
             l2_loss = 0
             layers = 0
             for v in self.current_model.trainable_weights:
@@ -87,48 +87,21 @@ class actor:
             policy_loss = tf.reduce_mean(- qvf1) + l2_loss
             grads = tape.gradient(policy_loss, self.current_model.trainable_weights)
         self.current_optimizer.apply_gradients(zip(grads, self.current_model.trainable_weights))
-            #critic update step
-        #self.update_target_network()
         vf_loss = critic.train_step_vf(s_t, min_target)
         return policy_loss, vf_loss
 
-    def kl_divergence(self, mu1, std1, mu2, std2, guard=0.000001):
-        #integral q(z) log q(z)/p(z)
-        #
-        divergence = tf.math.log(std2 ** 2/std1 **2 + guard) + (std1**2 + (mu1 - mu2) ** 2)/(2 * std2 **2 + guard)
-        #divergence= (mu1 - mu2) ** 2 + (std1 - std2) ** 2
-        return divergence
-
     def load_model(self, frame_num):
+        """
+        Saves current model weights to disk.
+        """
         self.current_model.load_weights(self.args.checkpoint_dir + "/" + self.args.custom_id +  "/actor_current_network_" + str(frame_num))
 
     def save_model(self, frame_num):
-        #save current + target
+        """
+        Loads model weights from disk.
+        """
         self.current_model.save_weights(self.args.checkpoint_dir + "/" + self.args.custom_id +  "/actor_current_network_" + str(frame_num), overwrite=True)
 
-
-    def get_task_reward(self, plan, aa_t):
-        plan_1 = - np.abs(plan[:, 0] - aa_t[:, 1])
-        plan_2 = - np.abs(plan[:, 1] - np.sqrt(np.sum(aa_t **2, axis=1))/np.sqrt(2))
-        plan_reward = np.concatenate([np.expand_dims(plan_1, axis=1), np.expand_dims(plan_2, axis=1)], axis=1)
-
-        # for i in range(256):
-        #     print(i, plan[i], aa_t[i], plan_reward[i])
-        # quit()
-        return plan_reward * 0.0
-
-    def sample_plan(self, batch_size, eval=False):
-        plan_0_indices = np.random.randint(0, 4, size=[batch_size])
-        plan_1_indices = np.random.randint(0, 3, size=[batch_size])
-
-        plan_0 = [-1, -0.33, 0, 0.33, 1]
-        plan_1 = [0.33, 0.67, 1]
-
-        plan = np.zeros((batch_size, 2))
-        for i in range(batch_size):
-            plan[i, 0] = plan_0[plan_0_indices[i]]
-            plan[i, 1] = plan_1[plan_1_indices[i]]
-        return plan
 
 class critic:
     def __init__(self, args, state_dim, action_dim, model_name="simple_gaussian_critic"):
@@ -166,12 +139,11 @@ class critic:
             loc=tf.zeros((action_dim, )), scale=tf.ones((self.action_dim, )))
 
     def train_step_vf(self, state, min_log_target, epsilon=1e-6):
-        # policy_prior_log_probs = self.policy_prior.log_prob(actor_actions)
-        # policy_prior_log_probs = tf.reduce_sum(policy_prior_log_probs, axis=1,
-        #               keepdims=True)
+        """
+        Updates value network toward min(Q1, Q2).
+        """
         target_value = tf.stop_gradient(min_log_target)
         with tf.GradientTape() as tape:
-            #print(target_value[0], min_log_target[0], log_pi[0])
             vf = self.current_vf_model(state)
             vf_loss = 0.5 * tf.reduce_mean((vf - target_value) ** 2)
             grads = tape.gradient(vf_loss, self.current_vf_model.trainable_weights)
@@ -179,8 +151,10 @@ class critic:
         return vf_loss
 
     def train_step_qvf(self, buffer):
+        """
+        Performs one training step for both Q-networks.
+        """
         s_t, s_t_1, a_t, r_t, terminal_t, indices, weight = buffer.sample_priority()
-        #s_t, s_t_1, a_t, r_t, terminal_t = buffer.sample()
 
         weight = np.expand_dims(weight, axis=1)
         reward = np.expand_dims(r_t, axis=1)
@@ -207,6 +181,9 @@ class critic:
         return td_loss_1 + td_loss_2
 
     def update_vf_network(self):
+        """
+        Soft update for value network
+        """
         current_weights = self.current_vf_model.get_weights()
         target_weights = self.target_vf_model.get_weights()
 
@@ -217,6 +194,9 @@ class critic:
         self.target_vf_model.set_weights(new_target_weights)
 
     def update_qvf_target_network(self):
+        """
+        Soft update for qvalue network
+        """
         current_weights = self.current_qvf_model_1.get_weights()
         target_weights = self.target_qvf_model_1.get_weights()
 
@@ -243,8 +223,6 @@ class critic:
         l4 = tf.keras.layers.Dense(self.args.hidden,kernel_initializer=init,activation=tf.nn.relu, name=name + "_l4")(l3)
 
         raw_output = tf.keras.layers.Dense(1, kernel_initializer=init,activation=None, name=name + "_out")(l4)
-
-        #raw_output = tf.keras.layers.Dense(1, kernel_initializer=init,activation=None, name=name + "_out")(l3)
         return raw_output
 
     def build_q_network(self, name, state, action):
@@ -258,7 +236,9 @@ class critic:
 
 
     def save_model(self, frame_num):
-        #save current + target
+        """
+        Save all qvalue and value network weights on the disk specified by args.checkpoint directory
+        """
         self.current_qvf_model_1.save_weights(self.args.checkpoint_dir + "/" + self.args.custom_id + "/critic_qvf_1_current_network_" + str(frame_num), overwrite=True)
         self.current_qvf_model_2.save_weights(self.args.checkpoint_dir + "/" + self.args.custom_id + "/critic_qvf_2_current_network_" + str(frame_num), overwrite=True)
 
@@ -267,7 +247,6 @@ class critic:
 
         self.current_vf_model.save_weights(self.args.checkpoint_dir + "/" + self.args.custom_id + "/critic_vf_current_network_" + str(frame_num), overwrite=True)
         self.target_vf_model.save_weights(self.args.checkpoint_dir + "/" + self.args.custom_id + "/critic_vf_target_network_" + str(frame_num), overwrite=True)
-        #self.transition_model.save_weights(self.args.checkpoint_dir + "/" + self.args.custom_id + "/transition_network" + str(frame_num), overwrite=True)
 
     def load_model_qvf1(self, frame_num):
         self.current_qvf_model_1.load_weights(self.args.checkpoint_dir + "/" + self.args.custom_id + "/critic_qvf_1_current_network_" + str(frame_num))
