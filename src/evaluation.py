@@ -534,7 +534,6 @@ def special_evaluation_state(actor, cost_buffer, error_function, mode=3):
                     true_gt_noisy += 1
 
 
-
     print("Mode: ", mode, "Greater than Accuracy: ", accuracy_type_1/accuracy_type_1_total, accuracy_type_1_total, ", Total Acc: ", (accuracy_type_1 + accuracy_type_2)/(accuracy_type_1_total + accuracy_type_2_total))
     print("Mode: ", mode, "Less than Accuracy: ", accuracy_type_2/accuracy_type_2_total, accuracy_type_2_total)
     print("Mode: ", mode, "Proportion True standard greater than noisy: ", true_gt_noisy/(64 * 50 * 32))

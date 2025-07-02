@@ -48,16 +48,14 @@ class actor:
             self.current_vars_list.append(current_vars)
             self.current_optimizer_list.append(current_optimizer)
 
-        self.huber_loss = tf.keras.losses.Huber(
-            delta=1.0,
-            reduction='sum_over_batch_size',
-            name='huber_loss')
         self.current_cost_model, self.current_cost_vars, self.current_cost_optimizer = self.build_cost(
             model_name="current")
-        self.target_cost_model, self.target_cost_vars, self.target_cost_optimizer = self.build_cost(model_name="target")
 
 
     def build_cost(self, model_name="current", epsilon=1e-6):
+        """
+        Builds the cost network
+        """
         init = tf.keras.initializers.GlorotNormal()
         action_input = tf.keras.layers.Input(shape=self.action_dim)
         input_value = tf.concat((self.state_input, action_input), axis=1)
@@ -92,6 +90,9 @@ class actor:
         return current_model, current_vars, optimizer
 
     def build_network(self, model_name="current", epsilon=1e-6):
+        """
+        Builds the policy network
+        """
         init = tf.keras.initializers.GlorotNormal()
 
         l2 = tf.keras.layers.Dense(self.args.hidden, kernel_initializer=init, activation=tf.nn.relu,
@@ -130,7 +131,10 @@ class actor:
 
     def train_step_cost_core(self, cost_buffer, error_function, activate_loss=False, expert_policy=None,
                                 verbose=False):
-
+        """
+        Main train step loop
+        Given the input cost version used, selects which function to use
+        """
         if self.args.cost_version == 1:
             #Noisy Expert
             return noisy_expert.train_step_cost(self, cost_buffer, error_function, expert_policy=expert_policy, verbose=verbose)
@@ -164,22 +168,6 @@ class actor:
         elif self.args.cost_version == 20:
             #debuggiong cost version
             return delayed_intervention_debugging_v1.train_step_cost(self, cost_buffer, error_function, expert_policy=expert_policy, verbose=verbose)
-
-
-
-    def update_target_network(self):
-        current_weights = self.current_cost_model.get_weights()
-        target_weights = self.target_cost_model.get_weights()
-
-        new_target_weights = []
-        for i in range(len(current_weights)):
-            new_weight = current_weights[i] * self.args.target_update_rate + target_weights[i] * (
-                        1 - self.args.target_update_rate)
-            new_target_weights.append(new_weight)
-        self.target_cost_model.set_weights(new_target_weights)
-
-
-
 
     def get_preference_loss_true_v6(self,
                                     supervision_threshold_1, supervision_threshold_2,
@@ -279,7 +267,9 @@ class actor:
 
     def pretrain_step_actor(self, cost_buffer):
         i = 0
-
+        """
+        Trains policy with BC only
+        """
         with tf.GradientTape() as tape:
             # actor update step
             s_t, a_t, _, _, intervention_status_t, _, label_t, expert_a_t, _ = cost_buffer.simple_sample(
@@ -304,7 +294,9 @@ class actor:
 
     def pretrain_step_actor_partial(self, cost_buffer):
         i = 0
-
+        """
+        Trains policy with BC only with expert data without any preint 
+        """
         with tf.GradientTape() as tape:
             # actor update step
             s_t, a_t, _, _, intervention_status_t, _, label_t, expert_a_t, _ = cost_buffer.simple_sample(
@@ -327,30 +319,12 @@ class actor:
         self.current_optimizer_list[i].apply_gradients(zip(grads, self.current_model_list[i].trainable_weights))
         return bc_loss
 
-    def pretrain_step_actor_all(self, cost_buffer):
-        i = 0
-
-        with tf.GradientTape() as tape:
-            # actor update step
-            s_t, a_t, _, _, intervention_status_t, _, label_t, expert_a_t, _ = cost_buffer.simple_sample(
-                self.args.batch_size, mode=0)
-            bc_a_t = self.current_model_list[i](s_t)
-            bc_loss_raw = (bc_a_t - expert_a_t) ** 2  # only learn the expert states
-            bc_loss = tf.reduce_mean(bc_loss_raw)
-
-            l2_loss = 0
-            layers = 0
-            for v in self.current_model_list[i].trainable_weights:
-                if 'bias' not in v.name and "current_actor" in v.name:
-                    l2_loss += tf.reduce_mean(tf.nn.l2_loss(v)) * self.args.l2
-                    layers += 1
-            l2_loss = l2_loss / layers
-            policy_loss = bc_loss + l2_loss
-            grads = tape.gradient(policy_loss, self.current_model_list[i].trainable_weights)
-        self.current_optimizer_list[i].apply_gradients(zip(grads, self.current_model_list[i].trainable_weights))
-        return bc_loss
-
     def train_step_actor(self, buffer_list, cost_buffer, expert_policy):
+        """
+        Train policy with cost function
+        Trains data with expert data using BC only(most direct source of information)
+        Trains data without expert data using the cost function
+        """
         i = 0
         with tf.GradientTape() as tape:
             # actor update step
@@ -386,6 +360,12 @@ class actor:
         return policy_loss, bc_loss, intervention_loss
 
     def train_step_actor_v2(self, buffer_list, cost_buffer, expert_policy):
+        """
+        Train policy with cost function
+        Trains data with expert data using BC only(most direct source of information)
+        Trains data without expert data using the cost function
+        Adds noise when training with the cost function
+        """
         i = 0
         with tf.GradientTape() as tape:
             # actor update step
@@ -402,14 +382,9 @@ class actor:
 
                 predicted_a_t_no_expert = self.current_model_list[i](s_t_no_expert)
 
-                if self.args.env_id == "Walker2d-v2":
-                    noisy_predicted_a_t_no_expert = predicted_a_t_no_expert
-                elif self.args.env_id == "Hopper-v2" or self.args.env_id == "Ant-v2":
-                    noise = tf.clip_by_value(tf.random.normal(a_t.shape) * 0.1, -0.25, 0.25)
-                    noisy_predicted_a_t_no_expert = tf.clip_by_value(predicted_a_t_no_expert + noise, -1, 1)
-                else:
-                    noise = tf.clip_by_value(tf.random.normal(a_t.shape) * 0.2, -0.5, 0.5)
-                    noisy_predicted_a_t_no_expert = tf.clip_by_value(predicted_a_t_no_expert + noise, -1, 1)
+
+                noise = tf.clip_by_value(tf.random.normal(a_t.shape) * 0.2, -0.5, 0.5)
+                noisy_predicted_a_t_no_expert = tf.clip_by_value(predicted_a_t_no_expert + noise, -1, 1)
 
                 cost_non_expert_action, _, _ = self.current_cost_model(
                     [s_t_no_expert, noisy_predicted_a_t_no_expert])  # Good state = 0, bad state = 1
