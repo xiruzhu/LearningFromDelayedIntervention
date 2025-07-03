@@ -318,21 +318,25 @@ def main():
             bc_loss = imitation_policy.pretrain_step_actor(cost_buffer) #BC ONLY
             policy_loss_list.append(0)
             bc_loss_list.append(bc_loss)
+            if frame_number % 1000 == 0:
+                tflogger.log_scalar("RAW/Policy_loss", np.mean(policy_loss_list), frame_number)
+                tflogger.log_scalar("RAW/BC_loss", np.mean(bc_loss_list), frame_number)
+
+                policy_loss_list = []
+                bc_loss_list = []
         else:
             policy_loss, bc_loss, cost_loss = imitation_policy.train_step_actor(None, cost_buffer, expert_policy) #With Cost
             policy_loss_list.append(policy_loss)
             bc_loss_list.append(bc_loss)
+            cost_loss_list.append(cost_loss)
+            if frame_number % 1000 == 0:
+                tflogger.log_scalar("RAW/Policy_loss", np.mean(policy_loss_list), frame_number)
+                tflogger.log_scalar("RAW/BC_loss", np.mean(bc_loss_list), frame_number)
+                tflogger.log_scalar("RAW/Policy_Cost_loss", np.mean(cost_loss_list), frame_number)
 
-
-        cost_loss_list.append(cost_loss)
-        if frame_number % 1000 == 0:
-            tflogger.log_scalar("RAW/Policy_loss", np.mean(policy_loss_list), frame_number)
-            tflogger.log_scalar("RAW/BC_loss", np.mean(bc_loss_list), frame_number)
-            tflogger.log_scalar("RAW/Policy_Cost_loss", np.mean(cost_loss_list), frame_number)
-
-            policy_loss_list = []
-            bc_loss_list = []
-            cost_loss_list = []
+                policy_loss_list = []
+                bc_loss_list = []
+                cost_loss_list = []
 
 
 if __name__ == "__main__":

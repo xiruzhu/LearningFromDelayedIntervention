@@ -483,7 +483,10 @@ def simple_evaluation(args, env, actor, noisy_actions=0):
 
 
 def special_evaluation_state(actor, cost_buffer, error_function, mode=3):
-
+    """
+    Evaluates the model without training an accompanying policy
+    Uses buffer data and noise to test the level of error for expert, inbetween and preint data
+    """
     accuracy_type_1 = 0
     accuracy_type_1_total = 0
     accuracy_type_2 = 0
